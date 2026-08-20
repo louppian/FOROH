@@ -1,0 +1,72 @@
+{
+  "args": {
+    "method": "FOROH",
+    "dataset": "limuc",
+    "backbone": "inception_v3",
+    "proj_dim": 128,
+    "no_arccos": false,
+    "fixed_w": false,
+    "no_projector": false,
+    "loss_fn": "huber",
+    "optimize_boundaries": false,
+    "aux_ce": false,
+    "aux_lambda": 0.3,
+    "freq_weight": false,
+    "boundary_grid": 200,
+    "epochs": 50,
+    "batch_size": 128,
+    "lr": 0.0002,
+    "lr_head": 0.001,
+    "weight_decay": 0.0001,
+    "img_size": 299,
+    "freeze_layers": 2,
+    "patience": 25,
+    "optimizer": "adam",
+    "scheduler": "reduce_lr",
+    "scheduler_patience": 10,
+    "oversample": true,
+    "augment_preset": "default",
+    "exp": 6,
+    "n_folds": 5,
+    "fold": 0,
+    "seed": 42,
+    "num_workers": 4,
+    "output_dir": "outputs/limuc_iv3"
+  },
+  "flags": [],
+  "fold_results": [
+    {
+      "mae": 0.2680901542111507,
+      "qwk": 0.8263735870927879,
+      "acc": 0.7408066429418743,
+      "macro_f1": 0.6712504718973404,
+      "off_by_1": 0.9916963226571768,
+      "recall_g0": 0.8205405405405405,
+      "recall_g1": 0.6810344827586207,
+      "recall_g2": 0.5649717514124294,
+      "recall_g3": 0.6166666666666667
+    }
+  ],
+  "mean": {
+    "mae": 0.2680901542111507,
+    "qwk": 0.8263735870927879,
+    "acc": 0.7408066429418743,
+    "macro_f1": 0.6712504718973404,
+    "off_by_1": 0.9916963226571768,
+    "recall_g0": 0.8205405405405405,
+    "recall_g1": 0.6810344827586207,
+    "recall_g2": 0.5649717514124294,
+    "recall_g3": 0.6166666666666667
+  },
+  "std": {
+    "mae": 0.0,
+    "qwk": 0.0,
+    "acc": 0.0,
+    "macro_f1": 0.0,
+    "off_by_1": 0.0,
+    "recall_g0": 0.0,
+    "recall_g1": 0.0,
+    "recall_g2": 0.0,
+    "recall_g3": 0.0
+  }
+}

@@ -1,0 +1,36 @@
+# Data: keep config only
+data/*
+!data/dataset_configs.json
+
+# Model checkpoints / weights
+*.pt
+*.pth
+*.ckpt
+*.onnx
+
+# Large archives / arrays
+*.zip
+*.tar
+*.tar.gz
+*.7z
+*.npz
+*.npy
+*.h5
+*.hdf5
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Trackers / temp
+wandb/
+runs/
+logs/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/

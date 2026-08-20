@@ -1,0 +1,78 @@
+{
+  "args": {
+    "method": "FOROH",
+    "dataset": "limuc",
+    "backbone": "resnet50",
+    "proj_dim": 128,
+    "no_arccos": false,
+    "fixed_w": false,
+    "no_projector": false,
+    "loss_fn": "huber",
+    "optimize_boundaries": false,
+    "aux_ce": false,
+    "aux_lambda": 0.3,
+    "freq_weight": false,
+    "boundary_grid": 200,
+    "ssl_v": true,
+    "ssl_lambda": 0.5,
+    "ssl_tau": 0.2,
+    "ssl_sin_threshold": 0.1,
+    "epochs": 50,
+    "batch_size": 128,
+    "lr": 0.0001,
+    "lr_head": 0.0001,
+    "weight_decay": 0.0001,
+    "img_size": 224,
+    "freeze_layers": 2,
+    "patience": 10,
+    "optimizer": "adamw",
+    "scheduler": "cosine",
+    "scheduler_patience": 10,
+    "oversample": false,
+    "augment_preset": "default",
+    "exp": 0,
+    "n_folds": 5,
+    "fold": 0,
+    "seed": 42,
+    "num_workers": 4,
+    "output_dir": "outputs"
+  },
+  "flags": [
+    "SSLv(\u03bb=0.5,\u03c4=0.2)"
+  ],
+  "fold_results": [
+    {
+      "mae": 0.26986951364175565,
+      "qwk": 0.821715324375197,
+      "acc": 0.7378410438908659,
+      "macro_f1": 0.6384116991360673,
+      "off_by_1": 0.9922894424673784,
+      "recall_g0": 0.8886486486486487,
+      "recall_g1": 0.5603448275862069,
+      "recall_g2": 0.6271186440677966,
+      "recall_g3": 0.425
+    }
+  ],
+  "mean": {
+    "mae": 0.26986951364175565,
+    "qwk": 0.821715324375197,
+    "acc": 0.7378410438908659,
+    "macro_f1": 0.6384116991360673,
+    "off_by_1": 0.9922894424673784,
+    "recall_g0": 0.8886486486486487,
+    "recall_g1": 0.5603448275862069,
+    "recall_g2": 0.6271186440677966,
+    "recall_g3": 0.425
+  },
+  "std": {
+    "mae": 0.0,
+    "qwk": 0.0,
+    "acc": 0.0,
+    "macro_f1": 0.0,
+    "off_by_1": 0.0,
+    "recall_g0": 0.0,
+    "recall_g1": 0.0,
+    "recall_g2": 0.0,
+    "recall_g3": 0.0
+  }
+}

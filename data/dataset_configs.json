@@ -1,0 +1,15 @@
+{
+  "retinamnist": {
+    "path": "data\\retinamnist",
+    "C_max": 4,
+    "num_classes": 5,
+    "distribution": {
+      "0": 486,
+      "1": 128,
+      "2": 206,
+      "3": 194,
+      "4": 66
+    },
+    "total": 1080
+  }
+}

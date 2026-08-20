@@ -1,0 +1,72 @@
+{
+  "args": {
+    "method": "FOROH",
+    "dataset": "limuc",
+    "backbone": "inception_v3",
+    "proj_dim": 128,
+    "no_arccos": false,
+    "fixed_w": false,
+    "no_projector": false,
+    "loss_fn": "huber",
+    "optimize_boundaries": false,
+    "aux_ce": false,
+    "aux_lambda": 0.3,
+    "freq_weight": false,
+    "boundary_grid": 200,
+    "epochs": 50,
+    "batch_size": 128,
+    "lr": 0.0001,
+    "lr_head": 0.001,
+    "weight_decay": 0.0001,
+    "img_size": 299,
+    "freeze_layers": 2,
+    "patience": 25,
+    "optimizer": "adam",
+    "scheduler": "reduce_lr",
+    "scheduler_patience": 10,
+    "oversample": false,
+    "augment_preset": "default",
+    "exp": 6,
+    "n_folds": 5,
+    "fold": 0,
+    "seed": 42,
+    "num_workers": 4,
+    "output_dir": "outputs/limuc_iv3_fix"
+  },
+  "flags": [],
+  "fold_results": [
+    {
+      "mae": 0.26453143534994067,
+      "qwk": 0.8286518391119102,
+      "acc": 0.741399762752076,
+      "macro_f1": 0.6534944773507475,
+      "off_by_1": 0.994661921708185,
+      "recall_g0": 0.8691891891891892,
+      "recall_g1": 0.6012931034482759,
+      "recall_g2": 0.6101694915254238,
+      "recall_g3": 0.49166666666666664
+    }
+  ],
+  "mean": {
+    "mae": 0.26453143534994067,
+    "qwk": 0.8286518391119102,
+    "acc": 0.741399762752076,
+    "macro_f1": 0.6534944773507475,
+    "off_by_1": 0.994661921708185,
+    "recall_g0": 0.8691891891891892,
+    "recall_g1": 0.6012931034482759,
+    "recall_g2": 0.6101694915254238,
+    "recall_g3": 0.49166666666666664
+  },
+  "std": {
+    "mae": 0.0,
+    "qwk": 0.0,
+    "acc": 0.0,
+    "macro_f1": 0.0,
+    "off_by_1": 0.0,
+    "recall_g0": 0.0,
+    "recall_g1": 0.0,
+    "recall_g2": 0.0,
+    "recall_g3": 0.0
+  }
+}
