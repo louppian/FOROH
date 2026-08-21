@@ -3,7 +3,8 @@ method: foroh
 
 dataset: limuc
 fold: 0
-n_folds: 5
+n_folds: 10
+split_seed: 42
 seed: 42
 
 backbone: resnet50
@@ -22,6 +23,7 @@ freeze_layers: 2
 
 img_size: 224
 huber_delta: 0.5
+class_weighting: false
 num_workers: 4
 
 output_dir: Result/02_LevelSet_Necessity
