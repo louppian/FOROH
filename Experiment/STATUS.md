@@ -1,17 +1,17 @@
 # FOROH Experiment Status
 
-This file is the operational status board. `PLAN.md` defines *why* each experiment exists; this file defines *what is implemented and what has actually been run*.
+This is the operational status board. `PLAN.md` defines why each experiment exists; this file records what is implemented and what has actually been executed.
 
 ## Current gate
 
-The project is currently at **Phase-1 method validity**. No broad leaderboard or expensive stress test should be started before Experiments 01 and 02 are interpretable.
+The project is at **Phase-1 method validity**. Experiments 01 and 02 must be interpretable before broad baseline or stress-test expansion.
 
 | ID | Experiment | Code status | Execution status | Next condition |
 |---|---|---|---|---|
 | 00 | Historical inventory / checkpoint verification | DONE | DONE on previous local copy | Re-run after major local file migration only |
-| 01 | Coordinate Necessity | IMPLEMENTED | NOT RUN after current fixes | Run preflight, then E01A/E01B/E01C fold 0 |
-| 02 | Level-Set Necessity | CORE IMPLEMENTED | NOT RUN after current fixes | Run only after/with 01; add representation analysis after numeric gate |
-| 03 | Ordinal Positioning (CE/Huber/CORAL/CORN/GOL/FOROH) | NOT IMPLEMENTED in new engine | NOT RUN | Start only if 01/02 support the formulation |
+| 01 | Coordinate Necessity | IMPLEMENTED | NOT RUN after current fixes | Preflight PASS, then E01A/E01B/E01C fold 0 |
+| 02 | Level-Set Necessity | CORE IMPLEMENTED | NOT RUN after current fixes | Run after/with 01; representation analysis afterward |
+| 03 | Ordinal Positioning | NOT IMPLEMENTED in new engine | NOT RUN | Start after 01/02 gate |
 | 04 | Small-N | PLANNED | NOT RUN | Requires fixed patient manifests + multi-seed runner |
 | 05 | Imbalance | PLANNED | NOT RUN | Requires grade-specific retention manifests |
 | 06 | Equal Spacing | PLANNED | NOT RUN | Requires controlled continuous-label setting |
@@ -20,17 +20,32 @@ The project is currently at **Phase-1 method validity**. No broad leaderboard or
 | 09 | Residual Probing | PLANNED | NOT RUN | Requires stable FOROH representation + phenotype labels |
 | 10 | Temporal | DEFERRED | NOT RUN | Follow-up work |
 
-## Scientific fixes applied before Phase-1 execution
+## Current implementation style
 
-1. **Matched scalar regression no longer clamps during training.** Clipping/rounding is evaluation-only.
-2. **Matched trainable capacity:** E01A, E01B, E01C and E02A have the same projector and the same number of trainable head parameters.
-3. **Point prototype no longer has an extra learnable azimuth vector.** The meridional reference is a fixed buffer orthogonalized against `w`.
-4. **Point prototype loss no longer uses `Huber(score) + lambda * prototype_loss`.** It now uses a single Huber objective on full spherical geodesic error in grade units, removing the extra `lambda` confound.
-5. **Class weighting is OFF by default and must be explicitly enabled.** The previous Phase-1 engine silently applied inverse-frequency weights to every method.
-6. **LIMUC uses patient-level 10-fold split for the gate**, with `split_seed=42` separated from the model/training seed.
-7. **Patient mapping is strict.** Missing or ambiguous filename-to-patient mapping aborts the run instead of creating pseudo-patients.
-8. **Test set is evaluated once only after validation-based checkpoint selection.** The new engine has no boundary optimization/test-selection path.
-9. **Outputs record split seed, parameter counts, sample paths, and patient IDs when available.**
+YAML experiment configs have been removed. New experiments use direct Python settings, matching the simpler original project style:
+
+```text
+Experiment/01_Coordinate_Necessity/run.py
+Experiment/02_LevelSet_Necessity/run.py
+        ↓
+Experiment/common/train.py
+        ↓
+Model/ + Dataset/
+```
+
+The experiment-specific values are visible directly in each `run.py`. `Experiment/common/train.py` contains only the shared training/evaluation machinery.
+
+## Scientific fixes applied before execution
+
+1. Matched scalar regression is unclipped during training; clipping/rounding is evaluation-only.
+2. E01A/E01B/E01C/E02A use matched projector capacity and matched trainable head parameter counts.
+3. Point prototype has no extra learnable azimuth direction.
+4. Point prototype uses full spherical geodesic Huber supervision without an auxiliary `lambda`.
+5. Class weighting is OFF by default.
+6. LIMUC gate uses patient-level 10-fold split; split seed and training seed are separate.
+7. Patient mapping is strict: missing/ambiguous mappings abort the run.
+8. Validation selects the checkpoint; test is evaluated once afterward.
+9. New outputs use JSON/CSV/PT only; no YAML is emitted.
 
 ## Required local preflight
 
@@ -46,25 +61,23 @@ Expected final line:
 PHASE-1 PREFLIGHT: PASS
 ```
 
-This must pass before GPU training. A failure in patient mapping is a data-integrity issue and should not be bypassed for paper experiments.
+Do not bypass a patient-map failure for paper experiments.
 
 ## Immediate execution order
 
 ```bash
-# 0. CPU/data integrity checks
+# 0. CPU/data integrity check
 python Experiment/common/preflight.py
 
-# 1. Geometry necessity
-bash Experiment/01_Coordinate_Necessity/run.sh
+# 1. Coordinate necessity: E01A, E01B, E01C
+python Experiment/01_Coordinate_Necessity/run.py
 
-# 2. Level-set necessity
-bash Experiment/02_LevelSet_Necessity/run.sh
+# 2. Level-set necessity: E02A, E02B
+python Experiment/02_LevelSet_Necessity/run.py
 ```
 
-After these finish, compare the metrics and inspect training stability before expanding folds, datasets, or baselines.
+## Legacy policy
 
-## Legacy code policy
-
-- `Experiment/Legacy_Paper_Reproduction/` and root historical scripts remain evidence/reproduction tools.
-- New scientific claims must use `Experiment/common/train.py` plus versioned YAML configs.
-- Do not mix results from historical `outputs/` with new `Result/01_*` / `Result/02_*` results without explicitly labeling them as legacy.
+- `Experiment/Legacy_Paper_Reproduction/`, root `3_train.py`, and `Experiment/train.py` are historical reproduction tools.
+- New scientific claims use the direct `run.py -> Experiment/common/train.py` path.
+- Historical `outputs/` and new `Result/` must not be mixed without an explicit legacy label.
