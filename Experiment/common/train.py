@@ -262,7 +262,24 @@ def save_results(out_dir, cfg, fold, best_epoch, best_state,
 # Main
 # ---------------------------------------------------------------------------
 
-def run(cfg):
+def _run_dir(cfg):
+    eid = cfg["experiment_id"]
+    method_tag = cfg["method"]
+    ds = cfg["dataset"]
+    bb = cfg["backbone"].replace("resnet50", "r50").replace("resnet18", "r18")
+    fold = cfg["fold"]
+    seed = cfg["seed"]
+    return (Path(cfg["output_dir"]) / f"{eid}_{method_tag}" /
+            f"{ds}_{bb}" / f"fold{fold:02d}_seed{seed}")
+
+
+def run(cfg, force=False):
+    run_dir = _run_dir(cfg)
+    if not force and (run_dir / "metrics.json").exists():
+        print(f"\n  SKIP {cfg['experiment_id']} — results already exist at {run_dir}/")
+        print(f"  (use --force to re-run)")
+        return None
+
     cfg["_started_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
 
     random.seed(cfg["seed"])
@@ -385,14 +402,7 @@ def run(cfg):
     print(f"    Recall: {recall_str}")
 
     # Save
-    eid = cfg["experiment_id"]
-    method_tag = cfg["method"]
-    ds = cfg["dataset"]
-    bb = cfg["backbone"].replace("resnet50", "r50").replace("resnet18", "r18")
-    fold = cfg["fold"]
-    seed = cfg["seed"]
-    run_dir = (Path(cfg["output_dir"]) / f"{eid}_{method_tag}" /
-               f"{ds}_{bb}" / f"fold{fold:02d}_seed{seed}")
+    run_dir = _run_dir(cfg)
 
     save_results(
         run_dir, cfg, fold, best_ep, best_state,
@@ -408,6 +418,8 @@ def main():
     parser.add_argument("--fold", type=int, default=None, help="Override fold")
     parser.add_argument("--seed", type=int, default=None, help="Override seed")
     parser.add_argument("--output-dir", default=None, help="Override output dir")
+    parser.add_argument("--force", action="store_true",
+                        help="Re-run even if results already exist")
     args = parser.parse_args()
 
     cfg = load_config(args.config)
@@ -418,7 +430,7 @@ def main():
     if args.output_dir is not None:
         cfg["output_dir"] = args.output_dir
 
-    run(cfg)
+    run(cfg, force=args.force)
 
 
 if __name__ == "__main__":
