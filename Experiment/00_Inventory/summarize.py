@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Print the actionable discrepancies from 00_Inventory reports."""
+"""Print actionable discrepancies from 00_Inventory reports."""
 
 from __future__ import annotations
 
@@ -18,6 +18,17 @@ def load(name):
     return json.loads(p.read_text(encoding="utf-8"))
 
 
+def fmt_metrics(d):
+    if not isinstance(d, dict):
+        return ""
+    keys = ("mae", "qwk", "acc", "macro_f1")
+    vals = []
+    for k in keys:
+        if d.get(k) is not None:
+            vals.append(f"{k}={d[k]:.4f}" if isinstance(d[k], (int, float)) else f"{k}={d[k]}")
+    return " ".join(vals)
+
+
 def main():
     print("\n=== CHECKPOINT RE-EVALUATION FAILURES ===")
     rep = load("checkpoint_verification_reeval.json")
@@ -25,11 +36,7 @@ def main():
         print("No re-evaluation report found")
     else:
         rows = rep if isinstance(rep, list) else rep.get("rows", rep.get("results", []))
-        bad = []
-        for r in rows:
-            ok = r.get("reeval_exact")
-            if ok is False:
-                bad.append(r)
+        bad = [r for r in rows if r.get("reeval_exact") is False]
         if not bad:
             print("None")
         for r in bad:
@@ -52,18 +59,32 @@ def main():
         return
     rows = pm if isinstance(pm, list) else pm.get("rows", pm.get("results", []))
     order = ["METRIC_MISMATCH", "CONFIG_MISMATCH", "MISSING", "MATCH"]
+
     for status in order:
         subset = [r for r in rows if r.get("status") == status]
         print(f"\n[{status}] {len(subset)}")
         for r in subset:
-            target = r.get("target_id") or r.get("id") or r.get("name")
-            cand = r.get("json_path") or r.get("candidate_json") or r.get("candidate")
-            print(f"- {target}")
-            if cand:
-                print(f"  candidate : {cand}")
-            reason = r.get("reason") or r.get("details") or r.get("mismatches")
-            if reason:
-                print(f"  reason    : {reason}")
+            target = r.get("target") or {}
+            best = r.get("best") or {}
+            target_id = target.get("id") or "<unnamed target>"
+            print(f"- {target_id}  ({target.get('section', '')})")
+            print(f"  target    : {target.get('dataset')}/{target.get('method')}/{target.get('backbone')}  {fmt_metrics(target.get('metrics', {}))}")
+
+            if best:
+                print(f"  candidate : {best.get('json_path')}")
+                print(f"  config    : fold={best.get('fold')} n_folds={best.get('n_folds')} proj={best.get('proj_dim')} loss={best.get('loss_fn')} freeze={best.get('freeze_layers')}")
+                print(f"  result    : {fmt_metrics(best)}")
+
+            if status == "METRIC_MISMATCH":
+                diffs = r.get("metric_diffs") or {}
+                for k, d in diffs.items():
+                    print(f"  diff {k:8s}: target={d.get('target')} result={d.get('result')} delta={d.get('delta')}")
+            elif status == "CONFIG_MISMATCH":
+                diffs = r.get("config_diffs") or {}
+                for k, d in diffs.items():
+                    print(f"  diff {k:18s}: target={d.get('target')} result={d.get('result')}")
+            elif status == "MISSING":
+                print("  candidate : none")
 
 
 if __name__ == "__main__":
