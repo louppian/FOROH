@@ -1,13 +1,21 @@
-"""Config-driven training engine for FOROH Phase-1 experiments.
+"""Config-driven training engine for current FOROH experiments.
 
 Usage:
   python Experiment/common/train.py --config Experiment/01_.../configs/E01C_foroh.yaml
+
+Scientific rules enforced here:
+- model selection uses validation only
+- test set is evaluated once after model selection
+- split seed is separate from training seed
+- class weighting is opt-in, not silently enabled
+- point-prototype control uses full geodesic supervision instead of an
+  extra weighted auxiliary loss
 """
 
 import argparse
+import csv
 import json
 import math
-import os
 import platform
 import random
 import subprocess
@@ -18,9 +26,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
-import torch.nn.functional as F
 from torch.utils.data import DataLoader
-
 import yaml
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -30,10 +36,6 @@ from Dataset import build_datasets, C_MAX
 from Model import build_model, freeze_backbone
 
 
-# ---------------------------------------------------------------------------
-# Config
-# ---------------------------------------------------------------------------
-
 DEFAULTS = {
     "method": "foroh",
     "dataset": "limuc",
@@ -41,8 +43,9 @@ DEFAULTS = {
     "proj_dim": 128,
     "dropout": 0.3,
     "fold": 0,
-    "n_folds": 5,
+    "n_folds": 10,
     "seed": 42,
+    "split_seed": 42,
     "optimizer": "adamw",
     "lr_backbone": 1e-4,
     "lr_head": 1e-3,
@@ -54,7 +57,7 @@ DEFAULTS = {
     "freeze_layers": 2,
     "img_size": 224,
     "huber_delta": 0.5,
-    "proto_lambda": 1.0,
+    "class_weighting": False,
     "num_workers": 4,
     "output_dir": "Result",
     "experiment_id": "E00",
@@ -69,76 +72,78 @@ def load_config(path):
     return merged
 
 
-# ---------------------------------------------------------------------------
-# Loss
-# ---------------------------------------------------------------------------
+def huber_per_sample(pred, target, delta):
+    diff = pred - target
+    ad = diff.abs()
+    return torch.where(ad <= delta, 0.5 * diff ** 2 / delta, ad - 0.5 * delta)
+
 
 def compute_loss(output, labels, cfg, class_weights=None):
-    """Huber loss on score, plus optional prototype regularization."""
-    score = output["score"]
+    """Matched Huber objective for Phase-1 controls.
+
+    Euclidean/cosine/FOROH use Huber(score, grade).
+    Point-prototype uses Huber(full spherical geodesic error, 0), expressed
+    in grade units. This changes only the point-vs-level-set constraint and
+    avoids introducing a tunable auxiliary-loss coefficient.
+    """
     y = labels.float()
     delta = cfg["huber_delta"]
 
-    diff = score - y
-    ad = diff.abs()
-    per = torch.where(ad <= delta, 0.5 * diff ** 2 / delta, ad - 0.5 * delta)
+    if cfg["method"] == "point_prototype":
+        u = output["u"].float()
+        target_protos = output["prototypes"][labels].float()
+        dot = torch.clamp((u * target_protos).sum(dim=-1), -1 + 1e-7, 1 - 1e-7)
+        geodesic = torch.acos(dot)
+        point_error = (geodesic / math.pi) * C_MAX[cfg["dataset"]]
+        per = huber_per_sample(point_error, torch.zeros_like(point_error), delta)
+        details_name = "prototype_geodesic_huber"
+    else:
+        per = huber_per_sample(output["score"], y, delta)
+        details_name = "huber"
 
     if class_weights is not None:
         loss = (per * class_weights[labels]).mean()
     else:
         loss = per.mean()
+    return loss, {details_name: loss.item()}
 
-    details = {"huber": loss.item()}
-
-    if cfg["method"] == "point_prototype" and "prototypes" in output:
-        protos = output["prototypes"]
-        u = output["u"].float()
-        target_protos = protos[labels]
-        cosine_dist = 1.0 - (u * target_protos).sum(dim=-1)
-        proto_loss = cosine_dist.mean()
-        lam = cfg["proto_lambda"]
-        total = loss + lam * proto_loss
-        details["proto"] = proto_loss.item()
-        details["total"] = total.item()
-        return total, details
-
-    return loss, details
-
-
-# ---------------------------------------------------------------------------
-# Evaluation
-# ---------------------------------------------------------------------------
 
 def evaluate(model, loader, c_max, device):
     from Experiment.common.metrics import compute_metrics
 
     model.eval()
-    all_scores, all_labels = [], []
-    all_thetas = []
+    all_scores, all_labels, all_thetas = [], [], []
 
     with torch.no_grad(), torch.amp.autocast("cuda", enabled=device.type == "cuda"):
         for imgs, y in loader:
             out = model(imgs.to(device))
-            score = out["score"]
-            all_scores.extend(score.cpu().numpy())
+            all_scores.extend(out["score"].detach().cpu().numpy())
             all_labels.extend(y.numpy())
             if "theta" in out:
-                all_thetas.extend(out["theta"].cpu().numpy())
+                all_thetas.extend(out["theta"].detach().cpu().numpy())
 
     preds = np.clip(np.round(all_scores), 0, c_max).astype(int)
-    metrics = compute_metrics(all_labels, preds, c_max)
+    labels = np.array(all_labels, dtype=int)
+    metrics = compute_metrics(labels, preds, c_max)
+
+    sample_paths = None
+    if hasattr(loader.dataset, "samples") and len(loader.dataset.samples) == len(labels):
+        sample_paths = [str(s[0]) for s in loader.dataset.samples]
+
+    patient_ids = None
+    if getattr(loader.dataset, "patient_ids", None) is not None:
+        if len(loader.dataset.patient_ids) == len(labels):
+            patient_ids = list(loader.dataset.patient_ids)
 
     return metrics, {
         "scores": np.array(all_scores),
-        "labels": np.array(all_labels, dtype=int),
+        "labels": labels,
         "preds": preds,
         "thetas": np.array(all_thetas) if all_thetas else None,
+        "sample_paths": sample_paths,
+        "patient_ids": patient_ids,
     }
 
-
-# ---------------------------------------------------------------------------
-# Training loop
-# ---------------------------------------------------------------------------
 
 def train_one_epoch(model, loader, optimizer, cfg, device, scaler, class_weights):
     model.train()
@@ -184,10 +189,6 @@ def compute_class_weights(dataset, c_max, device):
     return w
 
 
-# ---------------------------------------------------------------------------
-# Result writer
-# ---------------------------------------------------------------------------
-
 def get_git_commit():
     try:
         return subprocess.check_output(
@@ -215,9 +216,13 @@ def save_results(out_dir, cfg, fold, best_epoch, best_state,
         "device": str(torch.cuda.get_device_name(0) if torch.cuda.is_available() else "cpu"),
         "started_at": cfg.get("_started_at", ""),
         "dataset": cfg["dataset"],
-        "dataset_split": f"v1_patient{cfg['n_folds']}fold_seed{cfg['seed']}",
+        "dataset_split": f"v1_patient{cfg['n_folds']}fold_seed{cfg['split_seed']}",
         "fold": fold,
         "seed": cfg["seed"],
+        "split_seed": cfg["split_seed"],
+        "class_weighting": cfg["class_weighting"],
+        "head_trainable_params": cfg.get("_head_trainable_params"),
+        "model_trainable_params": cfg.get("_model_trainable_params"),
         "python_version": platform.python_version(),
         "pytorch_version": torch.__version__,
     }
@@ -228,17 +233,23 @@ def save_results(out_dir, cfg, fold, best_epoch, best_state,
         json.dump({"validation": val_metrics, "test": test_metrics}, f, indent=2)
 
     if raw_preds is not None:
-        import csv
         with open(out_dir / "predictions.csv", "w", newline="") as f:
             writer = csv.writer(f)
-            header = ["sample_idx", "label", "prediction", "score"]
+            header = ["sample_idx", "sample_path", "patient_id", "label", "prediction", "score"]
             if raw_preds["thetas"] is not None:
                 header.append("theta")
             writer.writerow(header)
             for i in range(len(raw_preds["labels"])):
-                row = [i, int(raw_preds["labels"][i]),
-                       int(raw_preds["preds"][i]),
-                       f"{raw_preds['scores'][i]:.6f}"]
+                sample_path = raw_preds["sample_paths"][i] if raw_preds["sample_paths"] else ""
+                patient_id = raw_preds["patient_ids"][i] if raw_preds["patient_ids"] else ""
+                row = [
+                    i,
+                    sample_path,
+                    patient_id,
+                    int(raw_preds["labels"][i]),
+                    int(raw_preds["preds"][i]),
+                    f"{raw_preds['scores'][i]:.6f}",
+                ]
                 if raw_preds["thetas"] is not None:
                     row.append(f"{raw_preds['thetas'][i]:.6f}")
                 writer.writerow(row)
@@ -251,16 +262,13 @@ def save_results(out_dir, cfg, fold, best_epoch, best_state,
         "config": {k: v for k, v in cfg.items() if not k.startswith("_")},
         "fold": fold,
         "seed": cfg["seed"],
+        "split_seed": cfg["split_seed"],
         "best_epoch": best_epoch,
         "validation_metrics": val_metrics,
         "test_metrics": test_metrics,
         "git_commit": manifest["git_commit"],
     }, out_dir / "checkpoint.pt")
 
-
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
 
 def _run_dir(cfg):
     eid = cfg["experiment_id"]
@@ -269,15 +277,19 @@ def _run_dir(cfg):
     bb = cfg["backbone"].replace("resnet50", "r50").replace("resnet18", "r18")
     fold = cfg["fold"]
     seed = cfg["seed"]
-    return (Path(cfg["output_dir"]) / f"{eid}_{method_tag}" /
-            f"{ds}_{bb}" / f"fold{fold:02d}_seed{seed}")
+    return (
+        Path(cfg["output_dir"])
+        / f"{eid}_{method_tag}"
+        / f"{ds}_{bb}"
+        / f"fold{fold:02d}_seed{seed}"
+    )
 
 
 def run(cfg, force=False):
     run_dir = _run_dir(cfg)
     if not force and (run_dir / "metrics.json").exists():
         print(f"\n  SKIP {cfg['experiment_id']} — results already exist at {run_dir}/")
-        print(f"  (use --force to re-run)")
+        print("  (use --force to re-run)")
         return None
 
     cfg["_started_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
@@ -291,11 +303,12 @@ def run(cfg, force=False):
     c_max = C_MAX[cfg["dataset"]]
 
     print(f"\n{'='*70}")
-    print(f"  {cfg['experiment_id']} | {cfg['method']} | {cfg['dataset']} | "
-          f"{cfg['backbone']} | fold {cfg['fold']}")
+    print(
+        f"  {cfg['experiment_id']} | {cfg['method']} | {cfg['dataset']} | "
+        f"{cfg['backbone']} | fold {cfg['fold']} | split_seed {cfg['split_seed']}"
+    )
     print(f"{'='*70}")
 
-    # Model
     model, head = build_model(
         cfg["method"], cfg["backbone"], c_max,
         proj_dim=cfg["proj_dim"], dropout=cfg["dropout"],
@@ -303,13 +316,17 @@ def run(cfg, force=False):
     model = model.to(device)
 
     frozen, total = freeze_backbone(model.backbone, cfg["backbone"], cfg["freeze_layers"])
-    print(f"  Backbone: {frozen/1e6:.1f}M/{total/1e6:.1f}M frozen "
-          f"({frozen/total*100:.0f}%)")
+    cfg["_head_trainable_params"] = sum(p.numel() for p in model.head.parameters() if p.requires_grad)
+    cfg["_model_trainable_params"] = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print(f"  Backbone: {frozen/1e6:.1f}M/{total/1e6:.1f}M frozen ({frozen/total*100:.0f}%)")
+    print(f"  Head trainable params: {cfg['_head_trainable_params']:,}")
 
-    # Data
     train_ds, val_ds, test_ds = build_datasets(
-        cfg["dataset"], fold=cfg["fold"], n_folds=cfg["n_folds"],
-        seed=cfg["seed"], img_size=cfg["img_size"],
+        cfg["dataset"],
+        fold=cfg["fold"],
+        n_folds=cfg["n_folds"],
+        seed=cfg["split_seed"],
+        img_size=cfg["img_size"],
     )
     print(f"  Train {len(train_ds)} | Val {len(val_ds)} | Test {len(test_ds)}")
 
@@ -326,7 +343,6 @@ def run(cfg, force=False):
         num_workers=cfg["num_workers"], pin_memory=True,
     )
 
-    # Optimizer
     bb_params = [p for p in model.backbone.parameters() if p.requires_grad]
     opt_cls = torch.optim.Adam if cfg["optimizer"] == "adam" else torch.optim.AdamW
     optimizer = opt_cls([
@@ -339,21 +355,26 @@ def run(cfg, force=False):
             optimizer, T_max=cfg["epochs"], eta_min=1e-6)
     else:
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, mode="min", factor=0.2, patience=cfg.get("scheduler_patience", 10))
+            optimizer, mode="min", factor=0.2,
+            patience=cfg.get("scheduler_patience", 10),
+        )
 
     scaler = torch.amp.GradScaler("cuda") if device.type == "cuda" else None
-    cw = compute_class_weights(train_ds, c_max, device)
-    print(f"  Class weights: {[f'G{i}={cw[i]:.2f}' for i in range(c_max+1)]}")
+    class_weights = None
+    if cfg["class_weighting"]:
+        class_weights = compute_class_weights(train_ds, c_max, device)
+        print(f"  Class weighting ON: {[f'G{i}={class_weights[i]:.2f}' for i in range(c_max+1)]}")
+    else:
+        print("  Class weighting OFF")
 
-    # Train
     best_mae, best_ep, best_state = float("inf"), 0, None
     patience_cnt = 0
     history = []
 
     for ep in range(1, cfg["epochs"] + 1):
         loss, det = train_one_epoch(
-            model, tr_loader, optimizer, cfg, device, scaler, cw)
-
+            model, tr_loader, optimizer, cfg, device, scaler, class_weights
+        )
         val_metrics, _ = evaluate(model, va_loader, c_max, device)
 
         if cfg["scheduler"] == "cosine":
@@ -363,9 +384,11 @@ def run(cfg, force=False):
 
         lr_now = optimizer.param_groups[0]["lr"]
         det_str = " ".join(f"{k}={v:.4f}" for k, v in det.items())
-        print(f"  Ep {ep:3d} | loss={loss:.4f} ({det_str}) | "
-              f"val MAE={val_metrics['mae']:.4f} QWK={val_metrics['qwk']:.4f} "
-              f"F1={val_metrics['macro_f1']:.4f} | lr={lr_now:.2e}")
+        print(
+            f"  Ep {ep:3d} | loss={loss:.4f} ({det_str}) | "
+            f"val MAE={val_metrics['mae']:.4f} QWK={val_metrics['qwk']:.4f} "
+            f"F1={val_metrics['macro_f1']:.4f} | lr={lr_now:.2e}"
+        )
 
         history.append({
             "epoch": ep,
@@ -386,26 +409,30 @@ def run(cfg, force=False):
                 print(f"  Early stopping at epoch {ep}")
                 break
 
+    if best_state is None:
+        raise RuntimeError("Training produced no checkpoint; check the data loader and batch size.")
+
     print(f"  Best epoch: {best_ep} (val MAE={best_mae:.4f})")
     model.load_state_dict(best_state)
     model = model.to(device)
 
-    # Final evaluation
+    # Validation is recomputed after restoring the selected checkpoint.
     val_final, _ = evaluate(model, va_loader, c_max, device)
+    # Test is touched only here, once, after model selection is complete.
     test_metrics, test_raw = evaluate(model, te_loader, c_max, device)
 
-    print(f"\n  Test results:")
-    print(f"    MAE={test_metrics['mae']:.4f}  QWK={test_metrics['qwk']:.4f}  "
-          f"ACC={test_metrics['acc']:.4f}  F1={test_metrics['macro_f1']:.4f}")
-    recall_str = "  ".join(f"G{i}={test_metrics[f'recall_g{i}']:.3f}"
-                           for i in range(c_max + 1))
+    print("\n  Test results:")
+    print(
+        f"    MAE={test_metrics['mae']:.4f}  QWK={test_metrics['qwk']:.4f}  "
+        f"ACC={test_metrics['acc']:.4f}  F1={test_metrics['macro_f1']:.4f}"
+    )
+    recall_str = "  ".join(
+        f"G{i}={test_metrics[f'recall_g{i}']:.3f}" for i in range(c_max + 1)
+    )
     print(f"    Recall: {recall_str}")
 
-    # Save
-    run_dir = _run_dir(cfg)
-
     save_results(
-        run_dir, cfg, fold, best_ep, best_state,
+        run_dir, cfg, cfg["fold"], best_ep, best_state,
         val_final, test_metrics, test_raw, history,
     )
     print(f"\n  Saved to {run_dir}/")
@@ -413,13 +440,13 @@ def run(cfg, force=False):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="FOROH Phase-1 Training")
+    parser = argparse.ArgumentParser(description="FOROH validated experiment training")
     parser.add_argument("--config", required=True, help="Path to YAML config")
     parser.add_argument("--fold", type=int, default=None, help="Override fold")
-    parser.add_argument("--seed", type=int, default=None, help="Override seed")
+    parser.add_argument("--seed", type=int, default=None, help="Override training seed")
+    parser.add_argument("--split-seed", type=int, default=None, help="Override split seed")
     parser.add_argument("--output-dir", default=None, help="Override output dir")
-    parser.add_argument("--force", action="store_true",
-                        help="Re-run even if results already exist")
+    parser.add_argument("--force", action="store_true", help="Re-run even if results exist")
     args = parser.parse_args()
 
     cfg = load_config(args.config)
@@ -427,6 +454,8 @@ def main():
         cfg["fold"] = args.fold
     if args.seed is not None:
         cfg["seed"] = args.seed
+    if args.split_seed is not None:
+        cfg["split_seed"] = args.split_seed
     if args.output_dir is not None:
         cfg["output_dir"] = args.output_dir
 
