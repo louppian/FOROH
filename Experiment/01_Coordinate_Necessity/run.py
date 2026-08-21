@@ -1,48 +1,35 @@
-"""Experiment 01: angular coordinate necessity.
+"""Experiment 01: coordinate necessity, using the original 3_train.py pipeline."""
 
-Settings live here directly; there is no YAML layer.
-"""
-
+import subprocess
 import sys
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(PROJECT_ROOT))
+ROOT = Path(__file__).resolve().parents[2]
+TRAIN = ROOT / "Experiment" / "train.py"
 
-from Experiment.common.train import run_experiment
-
-COMMON = dict(
-    dataset="limuc",
-    backbone="resnet50",
-    fold=0,
-    n_folds=10,
-    split_seed=42,
-    seed=42,
-    proj_dim=128,
-    dropout=0.3,
-    optimizer="adamw",
-    lr_backbone=1e-4,
-    lr_head=1e-3,
-    weight_decay=1e-4,
-    batch_size=64,
-    epochs=50,
-    scheduler="cosine",
-    patience=10,
-    freeze_layers=2,
-    img_size=224,
-    huber_delta=0.5,
-    class_weighting=False,
-    num_workers=4,
-    output_dir="Result/01_Coordinate_Necessity",
-)
-
-EXPERIMENTS = [
-    dict(COMMON, experiment_id="E01A", method="euclidean_huber"),
-    dict(COMMON, experiment_id="E01B", method="normalized_cosine"),
-    dict(COMMON, experiment_id="E01C", method="foroh"),
+# Keep the original 3_train.py defaults. Only the Phase-1 variant and output
+# directory change between controls.
+RUNS = [
+    ("E01A", "euclidean_huber"),
+    ("E01B", "normalized_cosine"),
+    ("E01C", "foroh"),
 ]
 
 
 if __name__ == "__main__":
-    for experiment in EXPERIMENTS:
-        run_experiment(experiment)
+    for exp_id, variant in RUNS:
+        out = ROOT / "Result" / "01_Coordinate_Necessity" / exp_id
+        cmd = [
+            sys.executable,
+            str(TRAIN),
+            "--method", "FOROH",
+            "--phase1-variant", variant,
+            "--dataset", "limuc",
+            "--backbone", "resnet50",
+            "--fold", "0",
+            "--seed", "42",
+            "--exp", "1",
+            "--output-dir", str(out),
+        ]
+        print("\n$", " ".join(cmd), flush=True)
+        subprocess.run(cmd, cwd=ROOT, check=True)
