@@ -1,83 +1,76 @@
 # FOROH Experiment Status
 
-This is the operational status board. `PLAN.md` defines why each experiment exists; this file records what is implemented and what has actually been executed.
+`PLAN.md` defines the research questions. This file records implementation and execution status.
 
 ## Current gate
 
-The project is at **Phase-1 method validity**. Experiments 01 and 02 must be interpretable before broad baseline or stress-test expansion.
+The project is at Phase-1 method validity. Experiments 01 and 02 have been rewritten to use the original root `3_train.py` training pipeline rather than the temporary modular engine.
 
 | ID | Experiment | Code status | Execution status | Next condition |
 |---|---|---|---|---|
-| 00 | Historical inventory / checkpoint verification | DONE | DONE on previous local copy | Re-run after major local file migration only |
-| 01 | Coordinate Necessity | IMPLEMENTED | NOT RUN after current fixes | Preflight PASS, then E01A/E01B/E01C fold 0 |
-| 02 | Level-Set Necessity | CORE IMPLEMENTED | NOT RUN after current fixes | Run after/with 01; representation analysis afterward |
-| 03 | Ordinal Positioning | NOT IMPLEMENTED in new engine | NOT RUN | Start after 01/02 gate |
-| 04 | Small-N | PLANNED | NOT RUN | Requires fixed patient manifests + multi-seed runner |
-| 05 | Imbalance | PLANNED | NOT RUN | Requires grade-specific retention manifests |
-| 06 | Equal Spacing | PLANNED | NOT RUN | Requires controlled continuous-label setting |
-| 07 | Single Axis | PLANNED | NOT RUN | Requires synthetic generator + GOL control |
-| 08 | Score Transfer | PLANNED | NOT RUN | Requires 06/07 characterization first |
-| 09 | Residual Probing | PLANNED | NOT RUN | Requires stable FOROH representation + phenotype labels |
-| 10 | Temporal | DEFERRED | NOT RUN | Follow-up work |
+| 00 | Historical inventory / checkpoint verification | DONE | DONE | Re-run only after major migration |
+| 01 | Coordinate Necessity | REWRITTEN ON ORIGINAL PIPELINE | RERUN REQUIRED | Run E01A/E01B/E01C fold 0 |
+| 02 | Level-Set Necessity | REWRITTEN ON ORIGINAL PIPELINE | RERUN REQUIRED | Run E02A/E02B after 01 |
+| 03 | Ordinal Positioning | PLANNED | NOT RUN | Start after 01/02 gate |
+| 04 | Small-N | PLANNED | NOT RUN | Later |
+| 05 | Imbalance | PLANNED | NOT RUN | Later |
+| 06 | Equal Spacing | PLANNED | NOT RUN | Later |
+| 07 | Single Axis | PLANNED | NOT RUN | Later |
+| 08 | Score Transfer | PLANNED | NOT RUN | Later |
+| 09 | Residual Probing | PLANNED | NOT RUN | Later |
+| 10 | Temporal | DEFERRED | NOT RUN | Follow-up |
 
-## Current implementation style
-
-YAML experiment configs have been removed. New experiments use direct Python settings, matching the simpler original project style:
+## Canonical Phase-1 execution path
 
 ```text
 Experiment/01_Coordinate_Necessity/run.py
 Experiment/02_LevelSet_Necessity/run.py
         ↓
-Experiment/common/train.py
+Experiment/train.py
         ↓
-Model/ + Dataset/
+original root 3_train.py
 ```
 
-The experiment-specific values are visible directly in each `run.py`. `Experiment/common/train.py` contains only the shared training/evaluation machinery.
+`Experiment/train.py` imports the original trainer and patches only the Phase-1 head/loss/evaluation extension points. The root `3_train.py` itself remains unchanged.
 
-## Scientific fixes applied before execution
+The previous `Experiment/common/train.py`, `Model/`, and `Dataset/` implementation is no longer the canonical Phase-1 path and should not be used for the rerun.
 
-1. Matched scalar regression is unclipped during training; clipping/rounding is evaluation-only.
-2. E01A/E01B/E01C/E02A use matched projector capacity and matched trainable head parameter counts.
-3. Point prototype has no extra learnable azimuth direction.
-4. Point prototype uses full spherical geodesic Huber supervision without an auxiliary `lambda`.
-5. Class weighting is OFF by default.
-6. LIMUC gate uses patient-level 10-fold split; split seed and training seed are separate.
-7. Patient mapping is strict: missing/ambiguous mappings abort the run.
-8. Validation selects the checkpoint; test is evaluated once afterward.
-9. New outputs use JSON/CSV/PT only; no YAML is emitted.
+## Original defaults restored
 
-## Required local preflight
+The rerun intentionally follows the original `3_train.py` defaults:
 
-From repository root:
+- LIMUC / ResNet50
+- 5 folds, fold 0 for the first gate
+- seed 42
+- batch size 128
+- backbone LR 1e-4
+- head LR 1e-4
+- AdamW
+- 50 epochs
+- cosine scheduler
+- freeze layers 2
+- projector dimension 128
+- Huber delta 0.5
+- frequency weighting OFF unless explicitly requested
+
+## Phase-1 definitions
+
+Experiment 01:
+
+- E01A: matched projector + unclipped bias-free Euclidean scalar Huber
+- E01B: normalized cosine score `((1-u·w)/2) * Cmax`
+- E01C: FOROH score `acos(u·w)/pi * Cmax`
+
+Experiment 02:
+
+- E02A: fixed-meridian hyperspherical point prototypes; full geodesic Huber training; nearest-prototype decoding
+- E02B: FOROH level-set angular regression
+
+## Execution
 
 ```bash
-python Experiment/common/preflight.py
-```
-
-Expected final line:
-
-```text
-PHASE-1 PREFLIGHT: PASS
-```
-
-Do not bypass a patient-map failure for paper experiments.
-
-## Immediate execution order
-
-```bash
-# 0. CPU/data integrity check
-python Experiment/common/preflight.py
-
-# 1. Coordinate necessity: E01A, E01B, E01C
 python Experiment/01_Coordinate_Necessity/run.py
-
-# 2. Level-set necessity: E02A, E02B
 python Experiment/02_LevelSet_Necessity/run.py
 ```
 
-## Legacy policy
-
-- `Experiment/Legacy_Paper_Reproduction/`, root `3_train.py`, and `Experiment/train.py` are historical reproduction tools.
-- New scientific claims use the direct `run.py -> Experiment/common/train.py` path.
-- Historical `outputs/` and new `Result/` must not be mixed without an explicit legacy label.
+Results created by the previous modular engine are retained only as development evidence. They must not be compared directly with the new original-pipeline reruns.
