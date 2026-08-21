@@ -1,0 +1,27 @@
+experiment_id: E01C
+method: foroh
+
+dataset: limuc
+fold: 0
+n_folds: 5
+seed: 42
+
+backbone: resnet50
+proj_dim: 128
+dropout: 0.3
+
+optimizer: adamw
+lr_backbone: 1.0e-4
+lr_head: 1.0e-3
+weight_decay: 1.0e-4
+batch_size: 64
+epochs: 50
+scheduler: cosine
+patience: 10
+freeze_layers: 2
+
+img_size: 224
+huber_delta: 0.5
+num_workers: 4
+
+output_dir: Result/01_Coordinate_Necessity

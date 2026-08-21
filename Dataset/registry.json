@@ -1,0 +1,8 @@
+{
+  "limuc": {
+    "root_env": "FOROH_LIMUC_ROOT",
+    "default_relative": "data/limuc",
+    "c_max": 3,
+    "split_version": "v1_patient5fold_seed42"
+  }
+}

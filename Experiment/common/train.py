@@ -1,0 +1,425 @@
+"""Config-driven training engine for FOROH Phase-1 experiments.
+
+Usage:
+  python Experiment/common/train.py --config Experiment/01_.../configs/E01C_foroh.yaml
+"""
+
+import argparse
+import json
+import math
+import os
+import platform
+import random
+import subprocess
+import sys
+import time
+from collections import Counter, defaultdict
+from pathlib import Path
+
+import numpy as np
+import torch
+import torch.nn.functional as F
+from torch.utils.data import DataLoader
+
+import yaml
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(PROJECT_ROOT))
+
+from Dataset import build_datasets, C_MAX
+from Model import build_model, freeze_backbone
+
+
+# ---------------------------------------------------------------------------
+# Config
+# ---------------------------------------------------------------------------
+
+DEFAULTS = {
+    "method": "foroh",
+    "dataset": "limuc",
+    "backbone": "resnet50",
+    "proj_dim": 128,
+    "dropout": 0.3,
+    "fold": 0,
+    "n_folds": 5,
+    "seed": 42,
+    "optimizer": "adamw",
+    "lr_backbone": 1e-4,
+    "lr_head": 1e-3,
+    "weight_decay": 1e-4,
+    "batch_size": 64,
+    "epochs": 50,
+    "scheduler": "cosine",
+    "patience": 10,
+    "freeze_layers": 2,
+    "img_size": 224,
+    "huber_delta": 0.5,
+    "proto_lambda": 1.0,
+    "num_workers": 4,
+    "output_dir": "Result",
+    "experiment_id": "E00",
+}
+
+
+def load_config(path):
+    with open(path) as f:
+        cfg = yaml.safe_load(f)
+    merged = {**DEFAULTS, **cfg}
+    merged["_config_path"] = str(path)
+    return merged
+
+
+# ---------------------------------------------------------------------------
+# Loss
+# ---------------------------------------------------------------------------
+
+def compute_loss(output, labels, cfg, class_weights=None):
+    """Huber loss on score, plus optional prototype regularization."""
+    score = output["score"]
+    y = labels.float()
+    delta = cfg["huber_delta"]
+
+    diff = score - y
+    ad = diff.abs()
+    per = torch.where(ad <= delta, 0.5 * diff ** 2 / delta, ad - 0.5 * delta)
+
+    if class_weights is not None:
+        loss = (per * class_weights[labels]).mean()
+    else:
+        loss = per.mean()
+
+    details = {"huber": loss.item()}
+
+    if cfg["method"] == "point_prototype" and "prototypes" in output:
+        protos = output["prototypes"]
+        u = output["u"].float()
+        target_protos = protos[labels]
+        cosine_dist = 1.0 - (u * target_protos).sum(dim=-1)
+        proto_loss = cosine_dist.mean()
+        lam = cfg["proto_lambda"]
+        total = loss + lam * proto_loss
+        details["proto"] = proto_loss.item()
+        details["total"] = total.item()
+        return total, details
+
+    return loss, details
+
+
+# ---------------------------------------------------------------------------
+# Evaluation
+# ---------------------------------------------------------------------------
+
+def evaluate(model, loader, c_max, device):
+    from Experiment.common.metrics import compute_metrics
+
+    model.eval()
+    all_scores, all_labels = [], []
+    all_thetas = []
+
+    with torch.no_grad(), torch.amp.autocast("cuda", enabled=device.type == "cuda"):
+        for imgs, y in loader:
+            out = model(imgs.to(device))
+            score = out["score"]
+            all_scores.extend(score.cpu().numpy())
+            all_labels.extend(y.numpy())
+            if "theta" in out:
+                all_thetas.extend(out["theta"].cpu().numpy())
+
+    preds = np.clip(np.round(all_scores), 0, c_max).astype(int)
+    metrics = compute_metrics(all_labels, preds, c_max)
+
+    return metrics, {
+        "scores": np.array(all_scores),
+        "labels": np.array(all_labels, dtype=int),
+        "preds": preds,
+        "thetas": np.array(all_thetas) if all_thetas else None,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Training loop
+# ---------------------------------------------------------------------------
+
+def train_one_epoch(model, loader, optimizer, cfg, device, scaler, class_weights):
+    model.train()
+    total_loss = 0.0
+    details_acc = defaultdict(float)
+    n_batches = 0
+
+    for imgs, y in loader:
+        imgs, y = imgs.to(device), y.to(device)
+        with torch.amp.autocast("cuda", enabled=scaler is not None):
+            out = model(imgs)
+            loss, det = compute_loss(out, y, cfg, class_weights)
+
+        optimizer.zero_grad()
+        if scaler:
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
+        else:
+            loss.backward()
+            optimizer.step()
+
+        total_loss += loss.item()
+        for k, v in det.items():
+            details_acc[k] += v
+        n_batches += 1
+
+    n = max(n_batches, 1)
+    return total_loss / n, {k: v / n for k, v in details_acc.items()}
+
+
+def compute_class_weights(dataset, c_max, device):
+    if hasattr(dataset, "samples"):
+        lbls = [s[1] for s in dataset.samples]
+    else:
+        lbls = dataset.labels.tolist()
+    counts = Counter(lbls)
+    n, C = len(lbls), c_max + 1
+    w = torch.zeros(C, device=device)
+    for k in range(C):
+        w[k] = n / (C * max(counts.get(k, 1), 1))
+    w /= w.mean()
+    return w
+
+
+# ---------------------------------------------------------------------------
+# Result writer
+# ---------------------------------------------------------------------------
+
+def get_git_commit():
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=str(PROJECT_ROOT),
+            stderr=subprocess.DEVNULL,
+        ).decode().strip()
+    except Exception:
+        return "unknown"
+
+
+def save_results(out_dir, cfg, fold, best_epoch, best_state,
+                 val_metrics, test_metrics, raw_preds, history):
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    with open(out_dir / "config.yaml", "w") as f:
+        yaml.dump({k: v for k, v in cfg.items() if not k.startswith("_")},
+                  f, default_flow_style=False, allow_unicode=True)
+
+    manifest = {
+        "experiment_id": cfg["experiment_id"],
+        "git_commit": get_git_commit(),
+        "git_branch": "reproduce-paper",
+        "hostname": platform.node(),
+        "device": str(torch.cuda.get_device_name(0) if torch.cuda.is_available() else "cpu"),
+        "started_at": cfg.get("_started_at", ""),
+        "dataset": cfg["dataset"],
+        "dataset_split": f"v1_patient{cfg['n_folds']}fold_seed{cfg['seed']}",
+        "fold": fold,
+        "seed": cfg["seed"],
+        "python_version": platform.python_version(),
+        "pytorch_version": torch.__version__,
+    }
+    with open(out_dir / "run_manifest.json", "w") as f:
+        json.dump(manifest, f, indent=2)
+
+    with open(out_dir / "metrics.json", "w") as f:
+        json.dump({"validation": val_metrics, "test": test_metrics}, f, indent=2)
+
+    if raw_preds is not None:
+        import csv
+        with open(out_dir / "predictions.csv", "w", newline="") as f:
+            writer = csv.writer(f)
+            header = ["sample_idx", "label", "prediction", "score"]
+            if raw_preds["thetas"] is not None:
+                header.append("theta")
+            writer.writerow(header)
+            for i in range(len(raw_preds["labels"])):
+                row = [i, int(raw_preds["labels"][i]),
+                       int(raw_preds["preds"][i]),
+                       f"{raw_preds['scores'][i]:.6f}"]
+                if raw_preds["thetas"] is not None:
+                    row.append(f"{raw_preds['thetas'][i]:.6f}")
+                writer.writerow(row)
+
+    with open(out_dir / "history.json", "w") as f:
+        json.dump(history, f, indent=2)
+
+    torch.save({
+        "model_state": best_state,
+        "config": {k: v for k, v in cfg.items() if not k.startswith("_")},
+        "fold": fold,
+        "seed": cfg["seed"],
+        "best_epoch": best_epoch,
+        "validation_metrics": val_metrics,
+        "test_metrics": test_metrics,
+        "git_commit": manifest["git_commit"],
+    }, out_dir / "checkpoint.pt")
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+def run(cfg):
+    cfg["_started_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+
+    random.seed(cfg["seed"])
+    np.random.seed(cfg["seed"])
+    torch.manual_seed(cfg["seed"])
+    torch.cuda.manual_seed_all(cfg["seed"])
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    c_max = C_MAX[cfg["dataset"]]
+
+    print(f"\n{'='*70}")
+    print(f"  {cfg['experiment_id']} | {cfg['method']} | {cfg['dataset']} | "
+          f"{cfg['backbone']} | fold {cfg['fold']}")
+    print(f"{'='*70}")
+
+    # Model
+    model, head = build_model(
+        cfg["method"], cfg["backbone"], c_max,
+        proj_dim=cfg["proj_dim"], dropout=cfg["dropout"],
+    )
+    model = model.to(device)
+
+    frozen, total = freeze_backbone(model.backbone, cfg["backbone"], cfg["freeze_layers"])
+    print(f"  Backbone: {frozen/1e6:.1f}M/{total/1e6:.1f}M frozen "
+          f"({frozen/total*100:.0f}%)")
+
+    # Data
+    train_ds, val_ds, test_ds = build_datasets(
+        cfg["dataset"], fold=cfg["fold"], n_folds=cfg["n_folds"],
+        seed=cfg["seed"], img_size=cfg["img_size"],
+    )
+    print(f"  Train {len(train_ds)} | Val {len(val_ds)} | Test {len(test_ds)}")
+
+    tr_loader = DataLoader(
+        train_ds, cfg["batch_size"], shuffle=True,
+        num_workers=cfg["num_workers"], pin_memory=True, drop_last=True,
+    )
+    va_loader = DataLoader(
+        val_ds, cfg["batch_size"] * 2, shuffle=False,
+        num_workers=cfg["num_workers"], pin_memory=True,
+    )
+    te_loader = DataLoader(
+        test_ds, cfg["batch_size"] * 2, shuffle=False,
+        num_workers=cfg["num_workers"], pin_memory=True,
+    )
+
+    # Optimizer
+    bb_params = [p for p in model.backbone.parameters() if p.requires_grad]
+    opt_cls = torch.optim.Adam if cfg["optimizer"] == "adam" else torch.optim.AdamW
+    optimizer = opt_cls([
+        {"params": bb_params, "lr": cfg["lr_backbone"]},
+        {"params": model.head.parameters(), "lr": cfg["lr_head"]},
+    ], weight_decay=cfg["weight_decay"])
+
+    if cfg["scheduler"] == "cosine":
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer, T_max=cfg["epochs"], eta_min=1e-6)
+    else:
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, mode="min", factor=0.2, patience=cfg.get("scheduler_patience", 10))
+
+    scaler = torch.amp.GradScaler("cuda") if device.type == "cuda" else None
+    cw = compute_class_weights(train_ds, c_max, device)
+    print(f"  Class weights: {[f'G{i}={cw[i]:.2f}' for i in range(c_max+1)]}")
+
+    # Train
+    best_mae, best_ep, best_state = float("inf"), 0, None
+    patience_cnt = 0
+    history = []
+
+    for ep in range(1, cfg["epochs"] + 1):
+        loss, det = train_one_epoch(
+            model, tr_loader, optimizer, cfg, device, scaler, cw)
+
+        val_metrics, _ = evaluate(model, va_loader, c_max, device)
+
+        if cfg["scheduler"] == "cosine":
+            scheduler.step()
+        else:
+            scheduler.step(val_metrics["mae"])
+
+        lr_now = optimizer.param_groups[0]["lr"]
+        det_str = " ".join(f"{k}={v:.4f}" for k, v in det.items())
+        print(f"  Ep {ep:3d} | loss={loss:.4f} ({det_str}) | "
+              f"val MAE={val_metrics['mae']:.4f} QWK={val_metrics['qwk']:.4f} "
+              f"F1={val_metrics['macro_f1']:.4f} | lr={lr_now:.2e}")
+
+        history.append({
+            "epoch": ep,
+            "train_loss": loss,
+            "val_mae": val_metrics["mae"],
+            "val_qwk": val_metrics["qwk"],
+            "val_macro_f1": val_metrics["macro_f1"],
+            "lr": lr_now,
+        })
+
+        if val_metrics["mae"] < best_mae:
+            best_mae, best_ep = val_metrics["mae"], ep
+            best_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
+            patience_cnt = 0
+        else:
+            patience_cnt += 1
+            if patience_cnt >= cfg["patience"]:
+                print(f"  Early stopping at epoch {ep}")
+                break
+
+    print(f"  Best epoch: {best_ep} (val MAE={best_mae:.4f})")
+    model.load_state_dict(best_state)
+    model = model.to(device)
+
+    # Final evaluation
+    val_final, _ = evaluate(model, va_loader, c_max, device)
+    test_metrics, test_raw = evaluate(model, te_loader, c_max, device)
+
+    print(f"\n  Test results:")
+    print(f"    MAE={test_metrics['mae']:.4f}  QWK={test_metrics['qwk']:.4f}  "
+          f"ACC={test_metrics['acc']:.4f}  F1={test_metrics['macro_f1']:.4f}")
+    recall_str = "  ".join(f"G{i}={test_metrics[f'recall_g{i}']:.3f}"
+                           for i in range(c_max + 1))
+    print(f"    Recall: {recall_str}")
+
+    # Save
+    eid = cfg["experiment_id"]
+    method_tag = cfg["method"]
+    ds = cfg["dataset"]
+    bb = cfg["backbone"].replace("resnet50", "r50").replace("resnet18", "r18")
+    fold = cfg["fold"]
+    seed = cfg["seed"]
+    run_dir = (Path(cfg["output_dir"]) / f"{eid}_{method_tag}" /
+               f"{ds}_{bb}" / f"fold{fold:02d}_seed{seed}")
+
+    save_results(
+        run_dir, cfg, fold, best_ep, best_state,
+        val_final, test_metrics, test_raw, history,
+    )
+    print(f"\n  Saved to {run_dir}/")
+    return test_metrics
+
+
+def main():
+    parser = argparse.ArgumentParser(description="FOROH Phase-1 Training")
+    parser.add_argument("--config", required=True, help="Path to YAML config")
+    parser.add_argument("--fold", type=int, default=None, help="Override fold")
+    parser.add_argument("--seed", type=int, default=None, help="Override seed")
+    parser.add_argument("--output-dir", default=None, help="Override output dir")
+    args = parser.parse_args()
+
+    cfg = load_config(args.config)
+    if args.fold is not None:
+        cfg["fold"] = args.fold
+    if args.seed is not None:
+        cfg["seed"] = args.seed
+    if args.output_dir is not None:
+        cfg["output_dir"] = args.output_dir
+
+    run(cfg)
+
+
+if __name__ == "__main__":
+    main()
