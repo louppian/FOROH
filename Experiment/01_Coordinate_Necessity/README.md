@@ -10,35 +10,46 @@ Does angular parameterization provide benefit beyond matched scalar regression a
 - `E01B` Normalized Cosine Regression
 - `E01C` FOROH Angular Regression
 
-## Fixed first-gate setting
+## Implementation basis
 
-- LIMUC
-- ResNet50
-- patient-level 10-fold split, fold 0
-- split seed 42, training seed 42
-- same 2-layer projector, projection dimension 128, dropout 0.3
-- AdamW, backbone LR 1e-4, head LR 1e-3
-- batch 64, cosine schedule, early stopping patience 10
+This experiment now runs through `Experiment/train.py`, which imports the original root `3_train.py` and patches only the Phase-1 head/loss. The original dataset loader, augmentation, optimizer, scheduler, early stopping, metrics, and checkpoint flow are retained.
+
+The root `3_train.py` itself is not modified.
+
+## Original defaults retained
+
+- LIMUC / ResNet50
+- fold 0 of the original 5-fold setup
+- seed 42
+- projector dimension 128, dropout 0.3
+- AdamW
+- backbone LR 1e-4
+- head LR 1e-4
+- batch size 128
+- 50 epochs
+- cosine scheduler
+- freeze layers 2
 - Huber delta 0.5
-- class weighting OFF
+- no frequency weighting unless explicitly requested
 
-All settings are written directly in `run.py`; there is no YAML config layer.
+The three controls use the same original training path. Euclidean Huber uses the same 2-layer projector and an unclipped bias-free scalar readout; clipping occurs only at evaluation. Cosine and FOROH differ only in the score map from the normalized dot product.
 
 ## Run
 
 ```bash
-python Experiment/common/preflight.py
 python Experiment/01_Coordinate_Necessity/run.py
 ```
 
-`run.sh` is only a thin shell wrapper around the same `run.py`.
+`run.sh` is a shell wrapper around `run.py`.
 
 ## Output
 
-`Result/01_Coordinate_Necessity/`
+New reruns are written under:
 
-Each completed run writes `config.json`, `run_manifest.json`, `metrics.json`, `history.json`, `predictions.csv`, and `checkpoint.pt`.
+`Result/01_Coordinate_Necessity/E01A|E01B|E01C/...`
+
+Previous results produced by the retired modular engine must not be mixed with these reruns.
 
 ## Status
 
-**Core implementation complete; current-code execution pending.** Run preflight before GPU training. Do not substitute the historical cosine/arccos reproduction script under `Legacy_Paper_Reproduction`.
+**Rewritten on the original code path; rerun required.**
