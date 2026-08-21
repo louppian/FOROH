@@ -1,6 +1,6 @@
 # FOROH Experiments
 
-이 디렉터리의 연구 기준 문서는 `PLAN.md`, 실제 구현/실행 진행도 기준 문서는 `STATUS.md`다.
+연구 기준 문서는 `PLAN.md`, 실제 구현/실행 진행도 기준 문서는 `STATUS.md`다.
 
 ## Current order
 
@@ -20,66 +20,61 @@
 
 ## Immediate gate
 
-먼저 다음 네 모델만 동일 LIMUC / ResNet50 / fold 조건에서 비교한다.
+먼저 동일 LIMUC / ResNet50 / patient-level fold 조건에서 다음 네 모델만 검증한다.
 
 1. Matched Euclidean Huber
 2. Normalized Cosine Regression
 3. Hyperspherical Point Prototype
 4. FOROH Level Set
 
-01/02 gate가 확인되기 전에는 03~10에 큰 계산 자원을 사용하지 않는다.
+01/02 결과가 해석 가능하기 전에는 03~10에 큰 계산 자원을 사용하지 않는다.
 
-현재 01/02의 core training implementation은 준비됐지만 아직 수정 후 로컬 실행 검증 전이다. 정확한 상태는 `STATUS.md`를 본다.
+## Execution style
 
-## Before any GPU run
+YAML config layer는 사용하지 않는다. 각 실험 설정은 해당 폴더의 `run.py`에 직접 적는다.
+
+```text
+Experiment/01_Coordinate_Necessity/run.py
+Experiment/02_LevelSet_Necessity/run.py
+        ↓
+Experiment/common/train.py
+        ↓
+Model/ + Dataset/
+```
+
+따라서 설정을 확인하려면 별도 config 파일이 아니라 `run.py` 자체를 보면 된다.
+
+## Before GPU run
 
 ```bash
 python Experiment/common/preflight.py
 ```
 
-`PHASE-1 PREFLIGHT: PASS`가 확인되어야 한다. 이 검사는 LIMUC patient mapping, train/validation patient leakage, Phase-1 head parameter count 동등성을 확인한다.
+마지막에 `PHASE-1 PREFLIGHT: PASS`가 나와야 한다.
 
-## Current training engine
-
-새 연구 실험은 config-driven engine을 사용한다.
-
-```text
-Experiment/common/train.py
-Model/
-Dataset/
-Experiment/<NN_...>/configs/
-```
-
-예:
+그 다음:
 
 ```bash
-bash Experiment/01_Coordinate_Necessity/run.sh
-bash Experiment/02_LevelSet_Necessity/run.sh
+python Experiment/01_Coordinate_Necessity/run.py
+python Experiment/02_LevelSet_Necessity/run.py
 ```
-
-`Experiment/train.py`와 root `3_train.py`는 historical checkpoint/paper reproduction compatibility용이다. 새 scientific claim용 실험에 사용하지 않는다.
 
 ## Historical paper reproduction
 
-이전 paper-table reproduction 스크립트는 다음에 보존한다.
+이전 paper-table reproduction 스크립트는 다음에 그대로 보존한다.
 
 ```text
 Experiment/Legacy_Paper_Reproduction/
 ```
 
-구조 정리 이전 전체 repository 상태는 다음 branch에 보존되어 있다.
+구조 정리 이전 repository 상태는 다음 branch에 보존되어 있다.
 
 ```text
 backup/pre-handoff-restructure-20260822
 ```
 
-## Existing result verification
+`Experiment/train.py`와 root `3_train.py`는 historical checkpoint/paper reproduction compatibility용이다. 새 scientific claim용 실험에 사용하지 않는다.
 
-원본 로컬 `outputs/`의 JSON/checkpoint를 다시 검증하려면:
+## Results
 
-```bash
-bash Experiment/00_Inventory/run.sh --reevaluate
-python Experiment/00_Inventory/summarize.py
-```
-
-기존 checkpoint는 historical evidence로 보존한다. 새 연구 결과는 `Result/<same experiment number>/...` 아래 저장한다.
+기존 `outputs/`는 historical evidence다. 새 연구 실험은 `Result/<experiment>/...`에 저장하며 `config.json`, `run_manifest.json`, `metrics.json`, `history.json`, `predictions.csv`, `checkpoint.pt`를 남긴다.
