@@ -1,20 +1,16 @@
 # FOROH Handoff Guide
 
-이 문서는 FOROH 프로젝트를 후임자에게 넘길 때 사용하는 최상위 인수인계 문서다.
+이 문서는 FOROH 프로젝트 인수인계의 기준 문서다.
 
 ## 1. 권장 로컬 위치
 
-Windows 기준 표준 로컬 경로는 다음으로 통일한다.
+Windows 기준 repository root:
 
 ```text
 D:\FOROH
 ```
 
-후임자는 repository root가 반드시 위 경로가 되도록 clone한다.
-
-## 2. 최초 다운로드
-
-PowerShell에서 다음을 실행한다.
+최초 clone:
 
 ```powershell
 Set-Location D:\
@@ -22,52 +18,62 @@ git clone --branch reproduce-paper --single-branch https://github.com/louppian/F
 Set-Location D:\FOROH
 ```
 
-이미 `D:\FOROH`가 존재하면 clone하지 말고 다음을 사용한다.
+## 2. 먼저 읽을 파일
 
-```powershell
-Set-Location D:\FOROH
-git fetch origin
-git switch reproduce-paper
-git pull origin reproduce-paper
+1. `00_README_FIRST.md`
+2. `HANDOFF.md`
+3. `Experiment/PLAN.md`
+4. `Experiment/README.md`
+5. `REPOSITORY_STRUCTURE.md`
+
+## 3. 현재 실험 우선순위
+
+현재 FOROH의 첫 목표는 기존 paper table 복원이 아니라 geometry necessity 검증이다.
+
+Phase-1:
+
+```text
+Experiment/01_Coordinate_Necessity/
+Experiment/02_LevelSet_Necessity/
 ```
 
-또는 repository에 포함된 스크립트를 사용할 수 있다.
+첫 gate의 핵심 모델:
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\handoff_windows.ps1
+- Matched Euclidean Huber
+- Normalized Cosine Regression
+- Hyperspherical Point Prototype
+- FOROH Level Set
+
+01/02 결과가 해석 가능해진 뒤 `03_Ordinal_Positioning` 이후로 확장한다. 전체 연구 설계는 `Experiment/PLAN.md`를 따른다.
+
+## 4. 기존 paper reproduction
+
+이전 구조의 실험 스크립트는 삭제하지 않고 다음으로 이동했다.
+
+```text
+Experiment/Legacy_Paper_Reproduction/
+├── 01_Main_Comparison/
+├── 02_Backbone_Scaling/
+├── 03_Score_Function/
+├── 04_Ablation/
+└── 05_Recovery/
 ```
 
-## 3. 후임자가 먼저 읽을 파일
+이 디렉터리는 historical reproduction 용도이며 현재 연구 실험 번호가 아니다.
 
-다음 순서로 읽는다.
+## 5. 되돌리기
 
-1. `HANDOFF.md` — 전체 인수인계 시작점
-2. `REPOSITORY_STRUCTURE.md` — 데이터/모델/실험/산출물 구조
-3. `Experiment/PLAN.md` — 연구 질문과 실험 우선순위
-4. `Experiment/00_Inventory/` — 기존 JSON/체크포인트 검증 도구
+2026-08-22 구조 정리 직전 repository 상태는 다음 branch에 그대로 보존되어 있다.
 
-## 4. 현재 연구 우선순위
+```text
+backup/pre-handoff-restructure-20260822
+```
 
-현재 FOROH에서 가장 먼저 검증할 것은 leaderboard 성능이 아니라 geometry 자체의 필요성이다.
+문제가 생기면 해당 branch를 checkout해 구조 정리 이전 상태를 확인할 수 있다.
 
-Phase-1 gate는 다음 네 모델로 제한한다.
+## 6. 데이터 전달
 
-1. Matched Euclidean Huber
-2. Normalized Cosine Regression
-3. Hyperspherical Point Prototype
-4. FOROH Level Set
-
-우선 대표 조건인 LIMUC / ResNet-50 / 동일 fold에서 비교한다.
-
-Phase-1이 통과된 뒤에만 GOL/CORAL/CORN, multi-fold, small-n, imbalance, score transfer로 확장한다.
-
-세부 계획은 `Experiment/PLAN.md`를 따른다.
-
-## 5. 데이터 인수인계
-
-Raw medical image는 Git repository에 포함하지 않는다.
-
-후임자에게 별도로 전달해야 하는 로컬 데이터는 다음 위치로 맞춘다.
+Raw medical data는 GitHub에 포함하지 않는다. 후임자의 로컬에서는 기존 코드 호환을 위해 우선 다음 경로를 유지한다.
 
 ```text
 D:\FOROH\data\
@@ -76,22 +82,13 @@ D:\FOROH\data\
 └── kneexray\
 ```
 
-향후 표준 구조로 migration하면 raw data와 Git-tracked metadata를 분리한다.
+장기적으로는 `REPOSITORY_STRUCTURE.md`에 정의한 `Dataset/registry + manifests + splits` 구조로 migration한다. 단, training code가 안정화되기 전에는 raw-data 경로를 무리하게 이동하지 않는다.
 
-```text
-Dataset/
-├── registry.json
-├── manifests/
-└── splits/
-```
+## 7. 기존 checkpoint / JSON
 
-중요: dataset manifest와 split 파일은 Git에서 관리하고 raw image만 Git 밖에 둔다.
+`.pt/.pth/.ckpt`는 Git에 없을 수 있으므로 서버/원본 로컬 폴더에서 별도 전달한다.
 
-## 6. 기존 checkpoint / JSON
-
-과거 실험에서 `.pt/.pth`는 `.gitignore` 때문에 GitHub에 없을 수 있다.
-
-따라서 기존 서버/원본 로컬 폴더의 다음 파일은 별도 외장디스크/공유스토리지로 함께 넘겨야 한다.
+가능하면 다음 구조를 그대로 복사한다.
 
 ```text
 outputs/**/results.json
@@ -100,18 +97,22 @@ outputs/**/*.pth
 outputs/**/*.ckpt
 ```
 
-가능하면 JSON과 해당 checkpoint를 같은 폴더 구조 그대로 복사한다.
+JSON과 해당 checkpoint는 같은 폴더 관계를 유지한다.
 
-기존 검증 결과에서는 발견된 checkpoint가 JSON과 일관되게 재평가되었다. 새 환경에서 다시 확인하려면 다음을 실행한다.
+검증:
 
 ```bash
 bash Experiment/00_Inventory/run.sh --reevaluate
 python Experiment/00_Inventory/summarize.py
 ```
 
-## 7. 산출물 규칙
+기존 검증에서는 발견된 historical checkpoint가 sibling JSON과 일관되게 재평가되었다. 다만 historical recipe와 현재 연구 계획의 config가 동일하다는 의미는 아니다.
 
-새 실험은 `Result/<experiment-number>/...` 아래 한 run 폴더에 다음을 같이 저장한다.
+## 8. 새 산출물 규칙
+
+새 실험은 `Experiment/<NN_name>`과 동일 번호의 `Result/<NN_name>`을 사용한다.
+
+각 run 폴더 권장 파일:
 
 ```text
 config.yaml
@@ -123,28 +124,29 @@ history.json
 stdout.log
 ```
 
-논문용 figure/table은 raw result와 분리해서 `Artifact/` 아래 생성한다.
+기존 `outputs/`는 historical evidence, 새 `Result/`는 현재 연구 실험 결과로 구분한다.
 
-## 8. 프로젝트를 넘기기 전 체크리스트
+## 9. 현재 구현 상태
 
-- `D:\FOROH`에서 repository가 정상 open되는지 확인
-- `git status`가 의도한 상태인지 확인
+- `Experiment/00_Inventory`: 사용 가능
+- `Experiment/01_Coordinate_Necessity`: 설계 완료, 구현 pending
+- `Experiment/02_LevelSet_Necessity`: 설계 완료, 구현 pending
+- `Experiment/03` 이후: planned
+- `Experiment/train.py`: root `3_train.py`를 사용하는 transitional compatibility layer
+- root training code는 Phase-1 안정화 전까지 대규모 이동하지 않는다.
+
+## 10. 인수인계 전 체크리스트
+
 - branch가 `reproduce-paper`인지 확인
-- `Experiment/PLAN.md` 존재 확인
-- `REPOSITORY_STRUCTURE.md` 존재 확인
-- raw dataset 별도 전달 여부 확인
-- `.pt/.pth` checkpoint 별도 전달 여부 확인
-- `Result/00_Inventory` report 보존 여부 확인
-- 후임자에게 첫 실행 명령 전달
+- `00_README_FIRST.md` 존재 확인
+- `Experiment/PLAN.md`와 실제 Experiment 번호가 일치하는지 확인
+- raw dataset 별도 전달 확인
+- local checkpoint 별도 전달 확인
+- `Result/00_Inventory` report 보존 확인
+- `outputs/`를 새 결과 폴더로 오인하지 않도록 설명
 
-첫 실행 권장 명령:
+Windows 점검 스크립트:
 
-```bash
-bash Experiment/00_Inventory/run.sh --reevaluate
+```powershell
+powershell -ExecutionPolicy Bypass -File .\handoff_windows.ps1
 ```
-
-## 9. 향후 정리 원칙
-
-기존 `outputs/`는 검증된 historical evidence이므로 바로 삭제하지 않는다.
-
-새 표준 실험은 `Experiment/01_...`, `Result/01_...` 구조를 사용하고, 기존 `outputs/`는 migration 완료 전까지 legacy로 취급한다.
