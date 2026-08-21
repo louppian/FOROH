@@ -1,0 +1,150 @@
+[
+  {
+    "id": "T1_LIMUC_R50_FOROH_10fold",
+    "section": "4.1 Main Comparison",
+    "dataset": "limuc",
+    "method": "FOROH",
+    "backbone": "resnet50",
+    "n_folds": 10,
+    "fold": -1,
+    "metrics": {"mae": 0.239, "qwk": 0.851, "acc": 0.767, "macro_f1": 0.701},
+    "std": {"mae": 0.009, "qwk": 0.007, "acc": 0.009, "macro_f1": 0.014}
+  },
+  {
+    "id": "T1_LIMUC_R50_FOROH_fold0",
+    "section": "4.1 Main Comparison",
+    "dataset": "limuc",
+    "method": "FOROH",
+    "backbone": "resnet50",
+    "fold": 0,
+    "metrics": {"mae": 0.233, "qwk": 0.861, "acc": 0.769, "macro_f1": 0.698,
+                "recall_g0": 0.919, "recall_g1": 0.569, "recall_g2": 0.537, "recall_g3": 0.725}
+  },
+  {
+    "id": "T1_LIMUC_R50_CE_fold0",
+    "section": "4.1 Main Comparison",
+    "dataset": "limuc",
+    "method": "ce",
+    "backbone": "resnet50",
+    "fold": 0,
+    "metrics": {"mae": 0.240, "qwk": 0.849, "acc": 0.766, "macro_f1": 0.710,
+                "recall_g0": 0.859, "recall_g1": 0.668, "recall_g2": 0.571, "recall_g3": 0.717}
+  },
+  {
+    "id": "T1_APTOS_R50_FOROH_fold0",
+    "section": "4.1 Main Comparison",
+    "dataset": "aptos",
+    "method": "FOROH",
+    "backbone": "resnet50",
+    "fold": 0,
+    "metrics": {"mae": 0.201, "qwk": 0.915, "acc": 0.834, "macro_f1": 0.663,
+                "recall_g0": 0.989, "recall_g1": 0.527, "recall_g2": 0.865, "recall_g3": 0.308, "recall_g4": 0.508}
+  },
+  {
+    "id": "T1_APTOS_R50_CE_fold0",
+    "section": "4.1 Main Comparison",
+    "dataset": "aptos",
+    "method": "ce",
+    "backbone": "resnet50",
+    "fold": 0,
+    "metrics": {"mae": 0.221, "qwk": 0.896, "acc": 0.830, "macro_f1": 0.641,
+                "recall_g0": 0.997, "recall_g1": 0.514, "recall_g2": 0.860, "recall_g3": 0.256, "recall_g4": 0.475}
+  },
+  {
+    "id": "T2_LIMUC_R18_FOROH_fold0",
+    "section": "4.2 Backbone Scaling",
+    "dataset": "limuc", "method": "FOROH", "backbone": "resnet18", "fold": 0,
+    "metrics": {"mae": 0.237, "qwk": 0.849, "acc": 0.771, "macro_f1": 0.709,
+                "recall_g0": 0.884, "recall_g1": 0.618, "recall_g2": 0.582, "recall_g3": 0.750}
+  },
+  {
+    "id": "T2_LIMUC_R18_CE_fold0",
+    "section": "4.2 Backbone Scaling",
+    "dataset": "limuc", "method": "ce", "backbone": "resnet18", "fold": 0,
+    "metrics": {"mae": 0.257, "qwk": 0.841, "acc": 0.756, "macro_f1": 0.677,
+                "recall_g0": 0.870, "recall_g1": 0.612, "recall_g2": 0.553, "recall_g3": 0.675}
+  },
+  {
+    "id": "T2_LIMUC_IV3_FOROH_fold0",
+    "section": "4.2 Backbone Scaling",
+    "dataset": "limuc", "method": "FOROH", "backbone": "inception_v3", "fold": 0,
+    "metrics": {"mae": 0.243, "qwk": 0.856, "acc": 0.763, "macro_f1": 0.697,
+                "recall_g0": 0.865, "recall_g1": 0.601, "recall_g2": 0.582, "recall_g3": 0.842}
+  },
+  {
+    "id": "T2_LIMUC_IV3_CE_fold0",
+    "section": "4.2 Backbone Scaling",
+    "dataset": "limuc", "method": "ce", "backbone": "inception_v3", "fold": 0,
+    "metrics": {"mae": 0.276, "qwk": 0.820, "acc": 0.743, "macro_f1": 0.671,
+                "recall_g0": 0.851, "recall_g1": 0.595, "recall_g2": 0.537, "recall_g3": 0.700}
+  },
+  {
+    "id": "T4_PROJ_d32", "section": "5.2 Projection Dimension",
+    "dataset": "limuc", "method": "FOROH", "backbone": "resnet50", "fold": 0, "proj_dim": 32,
+    "metrics": {"mae": 0.240, "qwk": 0.844, "recall_g0": 0.888, "recall_g1": 0.651, "recall_g2": 0.571, "recall_g3": 0.592}
+  },
+  {
+    "id": "T4_PROJ_d64", "section": "5.2 Projection Dimension",
+    "dataset": "limuc", "method": "FOROH", "backbone": "resnet50", "fold": 0, "proj_dim": 64,
+    "metrics": {"mae": 0.254, "qwk": 0.842, "recall_g0": 0.871, "recall_g1": 0.601, "recall_g2": 0.514, "recall_g3": 0.767}
+  },
+  {
+    "id": "T4_PROJ_d128", "section": "5.2 Projection Dimension",
+    "dataset": "limuc", "method": "FOROH", "backbone": "resnet50", "fold": 0, "proj_dim": 128,
+    "metrics": {"mae": 0.233, "qwk": 0.861, "recall_g0": 0.919, "recall_g1": 0.569, "recall_g2": 0.537, "recall_g3": 0.725}
+  },
+  {
+    "id": "T4_PROJ_d256", "section": "5.2 Projection Dimension",
+    "dataset": "limuc", "method": "FOROH", "backbone": "resnet50", "fold": 0, "proj_dim": 256,
+    "metrics": {"mae": 0.238, "qwk": 0.858, "recall_g0": 0.857, "recall_g1": 0.655, "recall_g2": 0.588, "recall_g3": 0.817}
+  },
+  {
+    "id": "T4_PROJ_d512", "section": "5.2 Projection Dimension",
+    "dataset": "limuc", "method": "FOROH", "backbone": "resnet50", "fold": 0, "proj_dim": 512,
+    "metrics": {"mae": 0.241, "qwk": 0.850, "recall_g0": 0.830, "recall_g1": 0.662, "recall_g2": 0.706, "recall_g3": 0.767}
+  },
+  {
+    "id": "T5_LOSS_HUBER", "section": "5.3 Loss Function",
+    "dataset": "limuc", "method": "FOROH", "backbone": "resnet50", "fold": 0, "loss_fn": "huber",
+    "metrics": {"mae": 0.233, "qwk": 0.861, "acc": 0.769, "macro_f1": 0.698,
+                "recall_g0": 0.919, "recall_g1": 0.569, "recall_g2": 0.537, "recall_g3": 0.725}
+  },
+  {
+    "id": "T5_LOSS_MSE", "section": "5.3 Loss Function",
+    "dataset": "limuc", "method": "FOROH", "backbone": "resnet50", "fold": 0, "loss_fn": "mse",
+    "metrics": {"mae": 0.237, "qwk": 0.850, "acc": 0.769, "macro_f1": 0.694,
+                "recall_g0": 0.869, "recall_g1": 0.688, "recall_g2": 0.548, "recall_g3": 0.633}
+  },
+  {
+    "id": "T5_LOSS_SMOOTHL1", "section": "5.3 Loss Function",
+    "dataset": "limuc", "method": "FOROH", "backbone": "resnet50", "fold": 0, "loss_fn": "smooth_l1",
+    "metrics": {"mae": 0.238, "qwk": 0.853, "acc": 0.767, "macro_f1": 0.703,
+                "recall_g0": 0.886, "recall_g1": 0.616, "recall_g2": 0.576, "recall_g3": 0.708}
+  },
+  {
+    "id": "T5_LOSS_L1", "section": "5.3 Loss Function",
+    "dataset": "limuc", "method": "FOROH", "backbone": "resnet50", "fold": 0, "loss_fn": "l1",
+    "metrics": {"mae": 0.256, "qwk": 0.841, "acc": 0.752, "macro_f1": 0.685,
+                "recall_g0": 0.844, "recall_g1": 0.666, "recall_g2": 0.497, "recall_g3": 0.750}
+  },
+  {
+    "id": "T5_FREEZE_0", "section": "5.5 Freeze Layers", "dataset": "limuc", "method": "FOROH", "backbone": "resnet50", "fold": 0, "freeze_layers": 0,
+    "metrics": {"mae": 0.233, "qwk": 0.852, "acc": 0.775}
+  },
+  {
+    "id": "T5_FREEZE_1", "section": "5.5 Freeze Layers", "dataset": "limuc", "method": "FOROH", "backbone": "resnet50", "fold": 0, "freeze_layers": 1,
+    "metrics": {"mae": 0.237, "qwk": 0.852, "acc": 0.769}
+  },
+  {
+    "id": "T5_FREEZE_2", "section": "5.5 Freeze Layers", "dataset": "limuc", "method": "FOROH", "backbone": "resnet50", "fold": 0, "freeze_layers": 2,
+    "metrics": {"mae": 0.233, "qwk": 0.861, "acc": 0.769}
+  },
+  {
+    "id": "T5_FREEZE_3", "section": "5.5 Freeze Layers", "dataset": "limuc", "method": "FOROH", "backbone": "resnet50", "fold": 0, "freeze_layers": 3,
+    "metrics": {"mae": 0.244, "qwk": 0.847, "acc": 0.763}
+  },
+  {
+    "id": "T5_FREEZE_4", "section": "5.5 Freeze Layers", "dataset": "limuc", "method": "FOROH", "backbone": "resnet50", "fold": 0, "freeze_layers": 4,
+    "metrics": {"mae": 0.263, "qwk": 0.831, "acc": 0.744}
+  }
+]
