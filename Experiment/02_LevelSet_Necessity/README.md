@@ -9,44 +9,22 @@ Is constraining only the ordinal polar coordinate better than collapsing each gr
 - `E02A` Hyperspherical Point Prototype
 - `E02B` FOROH Level Set
 
-Both use the same ResNet50 backbone, projector, hypersphere dimension, learnable severity axis, optimizer, split, and grade angular positions.
+The point-prototype control uses the same backbone/projector/hypersphere and grade angular positions as FOROH. The prototype meridian reference is fixed rather than adding an extra learnable direction parameter. Point supervision uses the full spherical geodesic error with the same Huber delta, avoiding an auxiliary-loss weight confound.
 
-The point control uses prototypes on one meridian:
+## Fixed first-gate setting
 
-```text
-a_y = cos(theta_y) w + sin(theta_y) q
-```
+Same LIMUC / ResNet50 / fold 0 / patient-level 10-fold / optimizer / projector settings as Experiment 01.
 
-`q` is derived from a fixed random buffer and is not trainable, so E02A has the same trainable parameter count as FOROH. E02A is trained by Huber loss on full spherical geodesic error expressed in grade units; FOROH is trained by Huber loss on polar score error. This avoids an extra tunable prototype-loss coefficient.
-
-## Gate setting
-
-- Dataset: LIMUC
-- Fold: 0 of patient-level 10-fold split
-- Split seed: 42
-- Training seed: 42
-- Backbone: ResNet50
-- Projection dimension: 128
-- Class weighting: OFF
-- Remaining optimizer/training settings identical to Experiment 01
-
-## Required preflight
-
-```bash
-python Experiment/common/preflight.py
-```
+All settings are written directly in `run.py`; there is no YAML config layer.
 
 ## Run
 
 ```bash
-bash Experiment/02_LevelSet_Necessity/run.sh
+python Experiment/common/preflight.py
+python Experiment/02_LevelSet_Necessity/run.py
 ```
 
-## Evaluation
-
-Initial gate: MAE, QWK, Macro-F1, class-wise recall.
-
-Representation analysis (same-grade angular spread / between-grade separation) is still pending and should be added only after the numerical gate runs successfully.
+`run.sh` is only a thin shell wrapper.
 
 ## Output
 
@@ -54,6 +32,4 @@ Representation analysis (same-grade angular spread / between-grade separation) i
 
 ## Status
 
-**CORE TRAINING IMPLEMENTED — REPRESENTATION ANALYSIS NOT YET IMPLEMENTED — NOT YET RUN.**
-
-Proceed to broad ordinal positioning only after 01/02 results are interpretable.
+**Core numeric comparison implemented; current-code execution pending.** Representation-spread analysis is still pending and should be added only after the numeric gate is stable.
