@@ -1,138 +1,61 @@
-# FOROH paper reproduction
+# FOROH Experiments
 
-This directory reproduces the experiments in the order used by the FOROH draft.
-The root scripts and historical `outputs/` directory are intentionally left unchanged.
+이 디렉터리의 **현재 기준 문서는 `PLAN.md`** 다. 실험 번호는 paper table 순서가 아니라 FOROH의 핵심 주장 검증 순서를 따른다.
 
-## 00 Historical result inventory and checkpoint verification
+## Current order
 
-Before retraining anything, inspect the original local experiment folders.
-The local working copy may contain `.pt/.pth/.ckpt` files beside `results.json`
-even though weights are ignored by git.
+| No. | Directory | Question |
+|---:|---|---|
+| 00 | `00_Inventory` | 기존 JSON/checkpoint가 실제로 재현되는가? |
+| 01 | `01_Coordinate_Necessity` | angular coordinate가 scalar/cosine control보다 필요한가? |
+| 02 | `02_LevelSet_Necessity` | point prototype보다 level-set이 필요한가? |
+| 03 | `03_Ordinal_Positioning` | CE/Huber/CORAL/CORN/GOL 대비 어디에 위치하는가? |
+| 04 | `04_Small_N` | small-data에서 shared coordinate가 더 안정적인가? |
+| 05 | `05_Imbalance` | sparse endpoint supervision에 강한가? |
+| 06 | `06_Equal_Spacing` | equal-angle assumption의 적용 범위는 어디까지인가? |
+| 07 | `07_Single_Axis` | single-axis progression assumption은 언제 성립하는가? |
+| 08 | `08_Score_Transfer` | grading system이 바뀌어도 coordinate가 transfer되는가? |
+| 09 | `09_Residual_Probing` | free azimuth residual에 어떤 정보가 남는가? |
+| 10 | `10_Temporal` | temporal extension은 가능한가? |
 
-Run structural inventory and JSON/checkpoint consistency checks:
+## Immediate gate
 
-```bash
-bash Experiment/00_Inventory/run.sh
+먼저 다음 네 모델만 동일 LIMUC / ResNet50 / fold 조건에서 비교한다.
+
+1. Matched Euclidean Huber
+2. Normalized Cosine Regression
+3. Hyperspherical Point Prototype
+4. FOROH Level Set
+
+01/02 gate가 확인되기 전에는 03~10에 큰 계산 자원을 사용하지 않는다.
+
+## Historical paper reproduction
+
+이전의 paper-table reproduction 스크립트는 삭제하지 않고 다음으로 이동했다.
+
+```text
+Experiment/Legacy_Paper_Reproduction/
 ```
 
-Run the same checks plus actual test-set inference from every loadable checkpoint:
+해당 스크립트는 과거 결과 복원/검증용이며 현재 실험 번호가 아니다.
+
+구조 정리 이전 전체 repository 상태는 다음 branch에 보존되어 있다.
+
+```text
+backup/pre-handoff-restructure-20260822
+```
+
+## Existing result verification
+
+새 학습 전에 원본 로컬 `outputs/`의 JSON/checkpoint를 검증하려면:
 
 ```bash
 bash Experiment/00_Inventory/run.sh --reevaluate
+python Experiment/00_Inventory/summarize.py
 ```
 
-This produces:
+기존 checkpoint는 historical evidence로 보존한다. 새 연구 실험 결과는 향후 `Result/<same experiment number>/...` 아래 저장한다.
 
-- `Result/00_Inventory/inventory.json` / `.csv`: every historical `results.json`, config, metrics, and sibling checkpoint names
-- `Result/00_Inventory/paper_match.json`: paper Table 1/2/4/5 targets classified as `MATCH`, `METRIC_MISMATCH`, `CONFIG_MISMATCH`, or `MISSING`
-- `Result/00_Inventory/checkpoint_verification_structural.json`: checkpoint readability, state dict presence, metadata consistency, and stored-metric consistency
-- `Result/00_Inventory/checkpoint_verification_reeval.json`: metrics recomputed from the checkpoint on the local test set and compared with sibling JSON
+## Shared implementation
 
-Do this step first. Only `MISSING` or non-recoverable mismatches should be retrained.
-
-## Paper setup used here
-
-- Primary dataset: LIMUC, patient-level stratified 10-fold CV + held-out test
-- APTOS: 5-fold image-level split; the draft also reports fold-0 comparisons
-- Metrics: MAE, QWK (primary), Accuracy, Macro F1, class-wise recall
-- Optimizer: AdamW
-- Backbone LR: 1e-4
-- Head LR: 1e-3
-- Scheduler: cosine
-- Early stopping patience: 10
-- Batch size: 64
-- Default FOROH: projection dim 128, Huber delta 0.5, learnable axis, projector enabled, freeze_layers=2
-
-## Reproduction order
-
-### 01 Main Comparison
-
-`Experiment/01_Main_Comparison/run.sh`
-
-1. LIMUC 10-fold: FOROH, CE, CORAL, CORN, MSE
-2. APTOS fold 0: FOROH vs CE
-3. APTOS full 5-fold: FOROH vs CE (setup-level reproduction)
-
-Draft target for LIMUC ResNet-50 10-fold FOROH:
-
-- MAE: 0.239 +/- 0.009
-- QWK: 0.851 +/- 0.007
-- ACC: 0.767 +/- 0.009
-- Macro F1: 0.701 +/- 0.014
-
-Draft target for APTOS ResNet-50 fold 0 FOROH:
-
-- MAE: 0.201
-- QWK: 0.915
-- ACC: 0.834
-- Macro F1: 0.663
-
-### 02 Backbone Scaling
-
-`Experiment/02_Backbone_Scaling/run.sh`
-
-LIMUC fold 0, FOROH vs CE on:
-
-1. ResNet-18
-2. Inception-v3
-3. ResNet-50
-
-### 03 Score Function
-
-`Experiment/03_Score_Function/run.sh`
-
-LIMUC fold 0, ResNet-50:
-
-1. arccos score: `acos(u.w) / pi * C_max`
-2. cosine regression: `(1 - u.w) / 2 * C_max`
-
-The score-function experiment reproduces the numerical ablation only. The draft's
-mechanistic explanation of an "implicit curriculum" is marked inside the draft as
-requiring revision, so it should not be treated as established by this script.
-
-### 04 Ablation
-
-`Experiment/04_Ablation/run.sh`
-
-Run in this order:
-
-1. Projection dimension: 32, 64, 128, 256, 512
-2. Loss: Huber(delta=0.5), L1, SmoothL1, MSE
-3. Severity axis: learnable vs fixed random
-4. Projector: with vs without
-5. Frozen stages: 0, 1, 2, 3, 4
-
-Draft default / fold-0 reference: MAE 0.233, QWK 0.861.
-
-## Running numerical experiments
-
-After step 00 identifies what is actually missing, run sections individually or run all:
-
-```bash
-bash Experiment/run_all.sh
-```
-
-Results are written under matching numbered directories in `Result/`.
-
-## Data locations expected by the current code
-
-```text
-data/
-├── limuc/
-│   ├── train_and_validation_sets/
-│   ├── patient_based_classified_images/
-│   └── test_set/
-├── aptos2019/
-│   ├── train.csv
-│   └── train_images/
-└── kneexray/
-    └── KneeXrayData/ClsKLData/kneeKL224/
-```
-
-Raw datasets remain ignored by git.
-
-## Important reproducibility notes
-
-1. The original root `run.sh` does **not** match the setup summarized in the draft for the main experiment. It contains later/alternate dataset-specific recipes (e.g. LIMUC Inception-v3 + Adam + ReduceLR + oversampling). The numbered reproduction scripts therefore use the draft setup explicitly.
-2. `5_figure.py` is stale relative to the current FOROH head API and should not be used until the numerical checkpoints are reproduced and the analysis script is updated.
-3. The draft itself marks the arccos-gradient mechanism and the `sin(theta)` uncertainty interpretation as requiring correction. Numerical experiments can be reproduced independently of those interpretations.
+현재 `Experiment/train.py`는 root `3_train.py`를 이용하는 transitional compatibility layer다. Phase-1 구현이 안정화되기 전에는 root training code를 대규모로 이동하지 않는다.
