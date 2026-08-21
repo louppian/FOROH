@@ -1,0 +1,69 @@
+{
+  "args": {
+    "method": "FOROH",
+    "phase1_variant": "foroh",
+    "dataset": "limuc",
+    "backbone": "resnet50",
+    "proj_dim": 128,
+    "optimize_boundaries": false,
+    "aux_ce": false,
+    "aux_lambda": 0.3,
+    "freq_weight": false,
+    "boundary_grid": 200,
+    "epochs": 50,
+    "batch_size": 128,
+    "lr": 0.0001,
+    "lr_head": 0.0001,
+    "weight_decay": 0.0001,
+    "img_size": 224,
+    "freeze_layers": 2,
+    "patience": 10,
+    "optimizer": "adamw",
+    "scheduler": "cosine",
+    "scheduler_patience": 10,
+    "oversample": false,
+    "augment_preset": "default",
+    "exp": 1,
+    "n_folds": 5,
+    "fold": 0,
+    "seed": 42,
+    "num_workers": 4,
+    "output_dir": "/shared/home/mai/JeongGeon/FOROH/Result/01_Coordinate_Necessity/E01C"
+  },
+  "flags": [],
+  "fold_results": [
+    {
+      "mae": 0.23962040332147094,
+      "qwk": 0.854173153626025,
+      "acc": 0.7651245551601423,
+      "macro_f1": 0.6974891636236815,
+      "off_by_1": 0.9952550415183867,
+      "recall_g0": 0.8864864864864865,
+      "recall_g1": 0.6228448275862069,
+      "recall_g2": 0.5084745762711864,
+      "recall_g3": 0.7583333333333333
+    }
+  ],
+  "mean": {
+    "mae": 0.23962040332147094,
+    "qwk": 0.854173153626025,
+    "acc": 0.7651245551601423,
+    "macro_f1": 0.6974891636236815,
+    "off_by_1": 0.9952550415183867,
+    "recall_g0": 0.8864864864864865,
+    "recall_g1": 0.6228448275862069,
+    "recall_g2": 0.5084745762711864,
+    "recall_g3": 0.7583333333333333
+  },
+  "std": {
+    "mae": 0.0,
+    "qwk": 0.0,
+    "acc": 0.0,
+    "macro_f1": 0.0,
+    "off_by_1": 0.0,
+    "recall_g0": 0.0,
+    "recall_g1": 0.0,
+    "recall_g2": 0.0,
+    "recall_g3": 0.0
+  }
+}
