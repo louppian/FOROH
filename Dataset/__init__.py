@@ -33,7 +33,7 @@ def get_data_root(dataset_name):
     return project_root / entry["default_relative"]
 
 
-def build_datasets(dataset_name, fold=0, n_folds=5, seed=42, img_size=224):
+def build_datasets(dataset_name, fold=0, n_folds=10, seed=42, img_size=224):
     root = get_data_root(dataset_name)
     tr_tf = get_transforms("train", img_size)
     va_tf = get_transforms("val", img_size)
@@ -41,6 +41,8 @@ def build_datasets(dataset_name, fold=0, n_folds=5, seed=42, img_size=224):
     ds_cls = DATASETS[dataset_name]
     kw = dict(fold=fold, n_folds=n_folds, seed=seed)
 
+    # LIMUCDataset is strict by default: incomplete/ambiguous patient mapping
+    # aborts the run rather than silently turning images into pseudo-patients.
     train_ds = ds_cls(root, "train", tr_tf, **kw)
     val_ds = ds_cls(root, "val", va_tf, **kw)
     test_ds = ds_cls(root, "test", va_tf)
