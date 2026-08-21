@@ -3,6 +3,33 @@
 This directory reproduces the experiments in the order used by the FOROH draft.
 The root scripts and historical `outputs/` directory are intentionally left unchanged.
 
+## 00 Historical result inventory and checkpoint verification
+
+Before retraining anything, inspect the original local experiment folders.
+The local working copy may contain `.pt/.pth/.ckpt` files beside `results.json`
+even though weights are ignored by git.
+
+Run structural inventory and JSON/checkpoint consistency checks:
+
+```bash
+bash Experiment/00_Inventory/run.sh
+```
+
+Run the same checks plus actual test-set inference from every loadable checkpoint:
+
+```bash
+bash Experiment/00_Inventory/run.sh --reevaluate
+```
+
+This produces:
+
+- `Result/00_Inventory/inventory.json` / `.csv`: every historical `results.json`, config, metrics, and sibling checkpoint names
+- `Result/00_Inventory/paper_match.json`: paper Table 1/2/4/5 targets classified as `MATCH`, `METRIC_MISMATCH`, `CONFIG_MISMATCH`, or `MISSING`
+- `Result/00_Inventory/checkpoint_verification_structural.json`: checkpoint readability, state dict presence, metadata consistency, and stored-metric consistency
+- `Result/00_Inventory/checkpoint_verification_reeval.json`: metrics recomputed from the checkpoint on the local test set and compared with sibling JSON
+
+Do this step first. Only `MISSING` or non-recoverable mismatches should be retrained.
+
 ## Paper setup used here
 
 - Primary dataset: LIMUC, patient-level stratified 10-fold CV + held-out test
@@ -77,9 +104,9 @@ Run in this order:
 
 Draft default / fold-0 reference: MAE 0.233, QWK 0.861.
 
-## Running everything
+## Running numerical experiments
 
-From the repository root:
+After step 00 identifies what is actually missing, run sections individually or run all:
 
 ```bash
 bash Experiment/run_all.sh
