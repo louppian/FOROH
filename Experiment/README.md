@@ -1,6 +1,6 @@
 # FOROH Experiments
 
-이 디렉터리의 **현재 기준 문서는 `PLAN.md`** 다. 실험 번호는 paper table 순서가 아니라 FOROH의 핵심 주장 검증 순서를 따른다.
+이 디렉터리의 연구 기준 문서는 `PLAN.md`, 실제 구현/실행 진행도 기준 문서는 `STATUS.md`다.
 
 ## Current order
 
@@ -29,15 +29,43 @@
 
 01/02 gate가 확인되기 전에는 03~10에 큰 계산 자원을 사용하지 않는다.
 
+현재 01/02의 core training implementation은 준비됐지만 아직 수정 후 로컬 실행 검증 전이다. 정확한 상태는 `STATUS.md`를 본다.
+
+## Before any GPU run
+
+```bash
+python Experiment/common/preflight.py
+```
+
+`PHASE-1 PREFLIGHT: PASS`가 확인되어야 한다. 이 검사는 LIMUC patient mapping, train/validation patient leakage, Phase-1 head parameter count 동등성을 확인한다.
+
+## Current training engine
+
+새 연구 실험은 config-driven engine을 사용한다.
+
+```text
+Experiment/common/train.py
+Model/
+Dataset/
+Experiment/<NN_...>/configs/
+```
+
+예:
+
+```bash
+bash Experiment/01_Coordinate_Necessity/run.sh
+bash Experiment/02_LevelSet_Necessity/run.sh
+```
+
+`Experiment/train.py`와 root `3_train.py`는 historical checkpoint/paper reproduction compatibility용이다. 새 scientific claim용 실험에 사용하지 않는다.
+
 ## Historical paper reproduction
 
-이전의 paper-table reproduction 스크립트는 삭제하지 않고 다음으로 이동했다.
+이전 paper-table reproduction 스크립트는 다음에 보존한다.
 
 ```text
 Experiment/Legacy_Paper_Reproduction/
 ```
-
-해당 스크립트는 과거 결과 복원/검증용이며 현재 실험 번호가 아니다.
 
 구조 정리 이전 전체 repository 상태는 다음 branch에 보존되어 있다.
 
@@ -47,15 +75,11 @@ backup/pre-handoff-restructure-20260822
 
 ## Existing result verification
 
-새 학습 전에 원본 로컬 `outputs/`의 JSON/checkpoint를 검증하려면:
+원본 로컬 `outputs/`의 JSON/checkpoint를 다시 검증하려면:
 
 ```bash
 bash Experiment/00_Inventory/run.sh --reevaluate
 python Experiment/00_Inventory/summarize.py
 ```
 
-기존 checkpoint는 historical evidence로 보존한다. 새 연구 실험 결과는 향후 `Result/<same experiment number>/...` 아래 저장한다.
-
-## Shared implementation
-
-현재 `Experiment/train.py`는 root `3_train.py`를 이용하는 transitional compatibility layer다. Phase-1 구현이 안정화되기 전에는 root training code를 대규모로 이동하지 않는다.
+기존 checkpoint는 historical evidence로 보존한다. 새 연구 결과는 `Result/<same experiment number>/...` 아래 저장한다.
