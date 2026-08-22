@@ -1,35 +1,45 @@
-"""Experiment 01: coordinate necessity, using the original 3_train.py pipeline."""
+"""Run the complete E01 coordinate-necessity experiment.
 
-import subprocess
-import sys
+This file is the only paper-run entrypoint for E01. It always runs all five
+folds for the three controlled variants and writes one 5-fold results.json per
+variant.
+"""
+
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
-TRAIN = ROOT / "Experiment" / "train.py"
+from train import run_variant
 
-# Keep the original 3_train.py defaults. Only the Phase-1 variant and output
-# directory change between controls.
-RUNS = [
+
+HERE = Path(__file__).resolve().parent
+REPO_ROOT = HERE.parents[1]
+RESULT_ROOT = REPO_ROOT / "Result" / "01_Coordinate_Necessity"
+
+COMMON = dict(
+    n_folds=5,
+    seed=42,
+    proj_dim=128,
+    epochs=50,
+    batch_size=128,
+    lr=1e-4,
+    lr_head=1e-4,
+    weight_decay=1e-4,
+    img_size=224,
+    freeze_layers=2,
+    patience=10,
+    num_workers=4,
+)
+
+EXPERIMENTS = [
     ("E01A", "euclidean_huber"),
     ("E01B", "normalized_cosine"),
     ("E01C", "foroh"),
 ]
 
 
+def main():
+    for exp_id, variant in EXPERIMENTS:
+        run_variant(variant, RESULT_ROOT / exp_id, **COMMON)
+
+
 if __name__ == "__main__":
-    for exp_id, variant in RUNS:
-        out = ROOT / "Result" / "01_Coordinate_Necessity" / exp_id
-        cmd = [
-            sys.executable,
-            str(TRAIN),
-            "--method", "FOROH",
-            "--phase1-variant", variant,
-            "--dataset", "limuc",
-            "--backbone", "resnet50",
-            "--fold", "0",
-            "--seed", "42",
-            "--exp", "1",
-            "--output-dir", str(out),
-        ]
-        print("\n$", " ".join(cmd), flush=True)
-        subprocess.run(cmd, cwd=ROOT, check=True)
+    main()
