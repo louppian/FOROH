@@ -12,7 +12,8 @@ from torchvision import transforms
 class LIMUCDataset(Dataset):
     C_MAX = 3
 
-    def __init__(self, root, split="train", transform=None, fold=None, n_folds=5, seed=42):
+    def __init__(self, root, split="train", transform=None, fold_index=None,
+                 n_folds=5, split_seed=1):
         self.root, self.transform, self.c_max = Path(root), transform, self.C_MAX
 
         if split == "test":
@@ -37,9 +38,11 @@ class LIMUCDataset(Dataset):
                 pid_labels[pid].append(g)
             strat = [Counter(pid_labels[p]).most_common(1)[0][0] for p in unique_pids]
 
-            if fold is not None:
-                skf = StratifiedKFold(n_splits=n_folds, shuffle=True, random_state=seed)
-                tr, va = list(skf.split(unique_pids, strat))[fold]
+            if fold_index is not None:
+                skf = StratifiedKFold(
+                    n_splits=n_folds, shuffle=True, random_state=split_seed
+                )
+                tr, va = list(skf.split(unique_pids, strat))[fold_index]
                 idx = tr if split == "train" else va
                 selected = {unique_pids[i] for i in idx}
             else:
