@@ -9,17 +9,37 @@ Is constraining only the ordinal polar coordinate better than collapsing each gr
 - `E02A` Hyperspherical Point Prototype
 - `E02B` FOROH Level Set
 
-## Implementation basis
+E02 is now self-contained and no longer depends on `Experiment/train.py`.
 
-This experiment uses the same `Experiment/train.py` wrapper over the original root `3_train.py` as Experiment 01. The original data, transform, optimizer, scheduler, early-stopping, metric, and save paths are retained; only the Phase-1 head/loss/point decoding are extended.
+```text
+Experiment/02_LevelSet_Necessity/
+├── run.py
+├── train.py
+├── models.py
+├── dataset.py
+├── metrics.py
+└── README.md
+```
 
-The point-prototype control uses the same backbone, projector, hypersphere, learnable severity axis, and grade angular positions as FOROH. A fixed meridian reference supplies the orthogonal direction without adding another trainable vector.
+The point-prototype control uses the same ResNet50 backbone, projector, hypersphere, and ordinal angular positions as FOROH. It uses full geodesic Huber supervision to the target prototype and nearest-prototype decoding.
 
-Training minimizes Huber on the full spherical geodesic distance to the target grade prototype. Evaluation uses nearest-prototype decoding. FOROH continues to use the original polar-angle score and rounding.
+## Official cross-validation / seed protocol
 
-## Original defaults retained
+The protocol is fixed in code and matches E01 exactly.
 
-Same as Experiment 01: LIMUC / ResNet50 / original 5-fold fold 0 / seed 42 / batch 128 / AdamW / LR 1e-4 for backbone and head / 50 epochs / cosine schedule / freeze layers 2.
+- Exactly 5 patient-level folds.
+- Public fold IDs: `1, 2, 3, 4, 5`.
+- Experiment/training seed equals fold ID: `1, 2, 3, 4, 5`.
+- CV split seed is fixed to `1` for the entire five-fold partition.
+- Python, NumPy, PyTorch, and CUDA RNG state is reset before every fold.
+- One `run.py` call executes both variants and all five folds.
+- Canonical checkpoints are `fold1.pt` through `fold5.pt`.
+
+A single fixed split seed is necessary for a genuine 5-fold partition; changing the split seed independently for each fold is not allowed.
+
+## Fixed training setting
+
+Same as E01: LIMUC, ResNet50, proj-dim 128, batch 128, AdamW, backbone/head LR 1e-4, weight decay 1e-4, 50 epochs, cosine scheduler, patience 10, freeze layers 2, Huber delta 0.5.
 
 ## Run
 
@@ -27,14 +47,18 @@ Same as Experiment 01: LIMUC / ResNet50 / original 5-fold fold 0 / seed 42 / bat
 python Experiment/02_LevelSet_Necessity/run.py
 ```
 
+There is no official single-fold entrypoint.
+
 ## Output
 
-New reruns are written under:
-
-`Result/02_LevelSet_Necessity/E02A|E02B/...`
-
-Previous results produced by the retired modular engine must not be mixed with these reruns.
-
-## Status
-
-**Rewritten on the original code path; rerun required.**
+```text
+Result/02_LevelSet_Necessity/
+├── E02A/FOROH_limuc/
+│   ├── fold1.pt
+│   ├── fold2.pt
+│   ├── fold3.pt
+│   ├── fold4.pt
+│   ├── fold5.pt
+│   └── results.json
+└── E02B/FOROH_limuc/
+```
