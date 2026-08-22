@@ -1,0 +1,270 @@
+"""Standalone E01 trainer split from the original root 3_train.py.
+
+The training/evaluation mechanics intentionally match the original LIMUC/ResNet50
+pipeline. Only the E01 head/score variant changes.
+"""
+
+import json
+import random
+from collections import Counter, defaultdict
+from pathlib import Path
+
+import numpy as np
+import torch
+import torch.nn.functional as F
+from torch.utils.data import DataLoader, WeightedRandomSampler
+
+from dataset import LIMUCDataset, get_transforms
+from metrics import compute_metrics, print_metrics
+from models import build_model
+
+
+HUBER_DELTA = 0.5
+C_MAX = 3
+REPO_ROOT = Path(__file__).resolve().parents[2]
+DATA_ROOT = REPO_ROOT / "data" / "limuc"
+
+
+def huber_loss(score, labels):
+    diff = score - labels.float()
+    ad = diff.abs()
+    return torch.where(
+        ad <= HUBER_DELTA,
+        0.5 * diff.square() / HUBER_DELTA,
+        ad - 0.5 * HUBER_DELTA,
+    ).mean()
+
+
+def freeze_backbone(model, n_layers=2):
+    if n_layers <= 0:
+        return "none"
+    groups = [["conv1", "bn1"], ["layer1"], ["layer2"], ["layer3"], ["layer4"]]
+    targets = [t for g in groups[:n_layers] for t in g]
+    frozen = 0
+    for name, p in model.backbone.named_parameters():
+        if any(name.startswith(t) for t in targets):
+            p.requires_grad = False
+            frozen += p.numel()
+    total = sum(p.numel() for p in model.backbone.parameters())
+    return (
+        f"Freeze {targets} — {frozen/1e6:.1f}M/{total/1e6:.1f}M "
+        f"({frozen/total*100:.0f}%), trainable {(total-frozen)/1e6:.1f}M"
+    )
+
+
+def build_datasets(fold, n_folds=5, seed=42, img_size=224):
+    tr_tf = get_transforms("train", img_size)
+    va_tf = get_transforms("val", img_size)
+    kw = dict(fold=fold, n_folds=n_folds, seed=seed)
+    train_ds = LIMUCDataset(DATA_ROOT, "train", tr_tf, **kw)
+    val_ds = LIMUCDataset(DATA_ROOT, "val", va_tf, **kw)
+    test_ds = LIMUCDataset(DATA_ROOT, "test", va_tf)
+    return train_ds, val_ds, test_ds
+
+
+def evaluate(model, loader, device):
+    model.eval()
+    all_preds, all_labels = [], []
+    with torch.no_grad(), torch.amp.autocast("cuda", enabled=device.type == "cuda"):
+        for imgs, labels in loader:
+            score, _, _, _ = model(imgs.to(device))
+            preds = score.round().clamp(0, C_MAX).cpu()
+            all_preds.extend(preds.numpy())
+            all_labels.extend(labels.numpy())
+    return compute_metrics(all_labels, all_preds, C_MAX)
+
+
+def train_one_epoch(model, loader, optimizer, device, scaler):
+    model.train()
+    total = 0.0
+    n = 0
+    for imgs, labels in loader:
+        imgs, labels = imgs.to(device), labels.to(device)
+        with torch.amp.autocast("cuda", enabled=scaler is not None):
+            score, _, _, _ = model(imgs)
+            loss = huber_loss(score, labels)
+        optimizer.zero_grad()
+        if scaler:
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
+        else:
+            loss.backward()
+            optimizer.step()
+        total += loss.item()
+        n += 1
+    return total / max(n, 1)
+
+
+def run_variant(
+    variant,
+    output_dir,
+    *,
+    n_folds=5,
+    seed=42,
+    proj_dim=128,
+    epochs=50,
+    batch_size=128,
+    lr=1e-4,
+    lr_head=1e-4,
+    weight_decay=1e-4,
+    img_size=224,
+    freeze_layers=2,
+    patience=10,
+    num_workers=4,
+):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    output_dir = Path(output_dir)
+    run_dir = output_dir / "FOROH_limuc"
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    all_results = []
+    fold_meta = []
+
+    for fold in range(n_folds):
+        print(f"\n[E01 {variant} | Fold {fold} | limuc | resnet50]")
+        model, head = build_model(variant, proj_dim=proj_dim, c_max=C_MAX)
+        model = model.to(device)
+        train_ds, val_ds, test_ds = build_datasets(
+            fold, n_folds=n_folds, seed=seed, img_size=img_size
+        )
+
+        print(
+            f"  Train {len(train_ds)} | Val {len(val_ds)} | Test {len(test_ds)}  "
+            f"C_max={C_MAX}  proj_dim={proj_dim}"
+        )
+        print(f"  {freeze_backbone(model, freeze_layers)}")
+
+        train_loader = DataLoader(
+            train_ds,
+            batch_size,
+            shuffle=True,
+            num_workers=num_workers,
+            pin_memory=True,
+            drop_last=True,
+        )
+        val_loader = DataLoader(
+            val_ds,
+            batch_size * 2,
+            shuffle=False,
+            num_workers=num_workers,
+            pin_memory=True,
+        )
+        test_loader = DataLoader(
+            test_ds,
+            batch_size * 2,
+            shuffle=False,
+            num_workers=num_workers,
+            pin_memory=True,
+        )
+
+        bb_params = [p for p in model.backbone.parameters() if p.requires_grad]
+        optimizer = torch.optim.AdamW(
+            [
+                {"params": bb_params, "lr": lr},
+                {"params": model.head.parameters(), "lr": lr_head},
+            ],
+            weight_decay=weight_decay,
+        )
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer, T_max=epochs, eta_min=1e-6
+        )
+        scaler = torch.amp.GradScaler("cuda") if device.type == "cuda" else None
+
+        best_mae, best_epoch, best_state = float("inf"), 0, None
+        patience_count = 0
+
+        for epoch in range(1, epochs + 1):
+            loss = train_one_epoch(model, train_loader, optimizer, device, scaler)
+            val_metrics = evaluate(model, val_loader, device)
+            scheduler.step()
+            print(
+                f"  Ep {epoch:3d} | loss={loss:.4f} | "
+                f"val MAE={val_metrics['mae']:.4f} "
+                f"QWK={val_metrics['qwk']:.4f} ACC={val_metrics['acc']:.4f}"
+            )
+
+            if val_metrics["mae"] < best_mae:
+                best_mae = val_metrics["mae"]
+                best_epoch = epoch
+                best_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
+                patience_count = 0
+            else:
+                patience_count += 1
+                if patience_count >= patience:
+                    print(f"  Early stopping at epoch {epoch}")
+                    break
+
+        print(f"  Best epoch: {best_epoch} (val MAE={best_mae:.4f})")
+        model.load_state_dict(best_state)
+        model = model.to(device)
+        test_metrics = evaluate(model, test_loader, device)
+        print("  Test:")
+        print_metrics(test_metrics, C_MAX, prefix="    ")
+
+        checkpoint = {
+            "model_state": best_state,
+            "variant": variant,
+            "fold": fold,
+            "best_epoch": best_epoch,
+            "test_final": test_metrics,
+            "config": {
+                "dataset": "limuc",
+                "backbone": "resnet50",
+                "proj_dim": proj_dim,
+                "epochs": epochs,
+                "batch_size": batch_size,
+                "lr": lr,
+                "lr_head": lr_head,
+                "weight_decay": weight_decay,
+                "img_size": img_size,
+                "freeze_layers": freeze_layers,
+                "patience": patience,
+                "optimizer": "adamw",
+                "scheduler": "cosine",
+                "n_folds": n_folds,
+                "seed": seed,
+            },
+        }
+        torch.save(checkpoint, run_dir / f"fold{fold}.pt")
+        all_results.append(test_metrics)
+        fold_meta.append({"fold": fold, "best_epoch": best_epoch, "best_val_mae": best_mae})
+
+    numeric_keys = list(all_results[0].keys())
+    summary = {
+        "variant": variant,
+        "config": {
+            "dataset": "limuc",
+            "backbone": "resnet50",
+            "proj_dim": proj_dim,
+            "epochs": epochs,
+            "batch_size": batch_size,
+            "lr": lr,
+            "lr_head": lr_head,
+            "weight_decay": weight_decay,
+            "img_size": img_size,
+            "freeze_layers": freeze_layers,
+            "patience": patience,
+            "optimizer": "adamw",
+            "scheduler": "cosine",
+            "n_folds": n_folds,
+            "seed": seed,
+        },
+        "fold_meta": fold_meta,
+        "fold_results": all_results,
+        "mean": {k: float(np.mean([r[k] for r in all_results])) for k in numeric_keys},
+        "std": {k: float(np.std([r[k] for r in all_results])) for k in numeric_keys},
+    }
+    with open(run_dir / "results.json", "w") as f:
+        json.dump(summary, f, indent=2, default=float)
+
+    print(f"\n[E01 {variant} summary]")
+    for key in ("mae", "qwk", "acc", "macro_f1"):
+        print(f"  {key:10s}: {summary['mean'][key]:.4f} ± {summary['std'][key]:.4f}")
+    print(f"Saved to {run_dir}/")
+    return summary
