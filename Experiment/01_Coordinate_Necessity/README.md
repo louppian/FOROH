@@ -2,7 +2,7 @@
 
 ## Question
 
-Does angular parameterization provide benefit beyond matched scalar regression and normalization?
+Does hyperspherical normalization help beyond matched Euclidean scalar regression, and does the FOROH angular coordinate add value beyond normalized cosine scoring?
 
 ## Models
 
@@ -10,46 +10,70 @@ Does angular parameterization provide benefit beyond matched scalar regression a
 - `E01B` Normalized Cosine Regression
 - `E01C` FOROH Angular Regression
 
-## Implementation basis
+## Canonical implementation
 
-This experiment now runs through `Experiment/train.py`, which imports the original root `3_train.py` and patches only the Phase-1 head/loss. The original dataset loader, augmentation, optimizer, scheduler, early stopping, metrics, and checkpoint flow are retained.
+E01 is now self-contained. The code was split from the original root `3_train.py` rather than routed through the later shared `Experiment/common` engine.
 
-The root `3_train.py` itself is not modified.
+```text
+Experiment/01_Coordinate_Necessity/
+├── run.py
+├── train.py
+├── models.py
+├── dataset.py
+├── metrics.py
+└── README.md
+```
 
-## Original defaults retained
+The training mechanics follow the original LIMUC/ResNet50 pipeline. The only intended experimental difference is the head/score mapping.
 
-- LIMUC / ResNet50
-- fold 0 of the original 5-fold setup
+## Fixed setting
+
+- LIMUC
+- ResNet50
+- patient-level 5-fold split
 - seed 42
-- projector dimension 128, dropout 0.3
+- projection dimension 128
+- dropout 0.3
 - AdamW
 - backbone LR 1e-4
 - head LR 1e-4
-- batch size 128
+- weight decay 1e-4
+- batch 128
 - 50 epochs
 - cosine scheduler
+- early stopping patience 10
 - freeze layers 2
 - Huber delta 0.5
-- no frequency weighting unless explicitly requested
-
-The three controls use the same original training path. Euclidean Huber uses the same 2-layer projector and an unclipped bias-free scalar readout; clipping occurs only at evaluation. Cosine and FOROH differ only in the score map from the normalized dot product.
 
 ## Run
+
+Run the complete paper experiment with one command:
 
 ```bash
 python Experiment/01_Coordinate_Necessity/run.py
 ```
 
-`run.sh` is a shell wrapper around `run.py`.
+`run.py` always executes E01A/E01B/E01C across folds 0-4 and writes a true 5-fold `results.json` for each model. Individual fold paper runs are intentionally not exposed through this entrypoint, preventing the previous single-fold `results.json` overwrite problem.
 
 ## Output
 
-New reruns are written under:
+```text
+Result/01_Coordinate_Necessity/
+├── E01A/FOROH_limuc/
+├── E01B/FOROH_limuc/
+└── E01C/FOROH_limuc/
+```
 
-`Result/01_Coordinate_Necessity/E01A|E01B|E01C/...`
+Each canonical model directory contains `fold0.pt` through `fold4.pt` plus one aggregate `results.json`.
 
-Previous results produced by the retired modular engine must not be mixed with these reruns.
+## Existing validated 5-fold result
 
-## Status
+| Model | MAE | QWK | Accuracy | Macro-F1 |
+|---|---:|---:|---:|---:|
+| Euclidean Huber | 0.2439 ± 0.0028 | 0.8476 ± 0.0049 | 0.7622 ± 0.0032 | 0.6852 ± 0.0058 |
+| Normalized Cosine | 0.2401 ± 0.0057 | 0.8497 ± 0.0044 | 0.7669 ± 0.0059 | 0.7032 ± 0.0080 |
+| FOROH | 0.2403 ± 0.0033 | 0.8517 ± 0.0021 | 0.7654 ± 0.0036 | 0.7022 ± 0.0031 |
 
-**Rewritten on the original code path; rerun required.**
+## Migration status
+
+The previous checkpoints/results are preserved. Before deleting the old shared engine and duplicate result directories, run one reproduction check with this self-contained E01 code and compare split counts, best-epoch behavior, and fold metrics against the preserved checkpoints.
