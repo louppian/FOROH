@@ -1,18 +1,23 @@
 """Standalone E01 trainer split from the original root 3_train.py.
 
-The training/evaluation mechanics intentionally match the original LIMUC/ResNet50
-pipeline. Only the E01 head/score variant changes.
+Official protocol is intentionally non-configurable:
+- one call runs all five folds;
+- public fold IDs are 1,2,3,4,5;
+- training/experiment seed equals the public fold ID;
+- one fixed CV split seed is used for the complete 5-fold partition.
+
+Keeping the split seed fixed is required for a genuine 5-fold cross-validation
+partition. Changing the split seed per fold would create five unrelated splits.
 """
 
 import json
 import random
-from collections import Counter, defaultdict
 from pathlib import Path
 
 import numpy as np
 import torch
 import torch.nn.functional as F
-from torch.utils.data import DataLoader, WeightedRandomSampler
+from torch.utils.data import DataLoader
 
 from dataset import LIMUCDataset, get_transforms
 from metrics import compute_metrics, print_metrics
@@ -21,8 +26,18 @@ from models import build_model
 
 HUBER_DELTA = 0.5
 C_MAX = 3
+N_FOLDS = 5
+SPLIT_SEED = 1
+FOLD_SEEDS = (1, 2, 3, 4, 5)
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DATA_ROOT = REPO_ROOT / "data" / "limuc"
+
+
+def set_experiment_seed(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
 
 
 def huber_loss(score, labels):
@@ -52,10 +67,14 @@ def freeze_backbone(model, n_layers=2):
     )
 
 
-def build_datasets(fold, n_folds=5, seed=42, img_size=224):
+def build_datasets(fold_index, img_size=224):
     tr_tf = get_transforms("train", img_size)
     va_tf = get_transforms("val", img_size)
-    kw = dict(fold=fold, n_folds=n_folds, seed=seed)
+    kw = dict(
+        fold_index=fold_index,
+        n_folds=N_FOLDS,
+        split_seed=SPLIT_SEED,
+    )
     train_ds = LIMUCDataset(DATA_ROOT, "train", tr_tf, **kw)
     val_ds = LIMUCDataset(DATA_ROOT, "val", va_tf, **kw)
     test_ds = LIMUCDataset(DATA_ROOT, "test", va_tf)
@@ -100,8 +119,6 @@ def run_variant(
     variant,
     output_dir,
     *,
-    n_folds=5,
-    seed=42,
     proj_dim=128,
     epochs=50,
     batch_size=128,
@@ -113,11 +130,6 @@ def run_variant(
     patience=10,
     num_workers=4,
 ):
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     output_dir = Path(output_dir)
     run_dir = output_dir / "FOROH_limuc"
@@ -126,13 +138,21 @@ def run_variant(
     all_results = []
     fold_meta = []
 
-    for fold in range(n_folds):
-        print(f"\n[E01 {variant} | Fold {fold} | limuc | resnet50]")
+    for fold_id, experiment_seed in zip(range(1, N_FOLDS + 1), FOLD_SEEDS):
+        if fold_id != experiment_seed:
+            raise RuntimeError("Official protocol requires fold_id == experiment_seed")
+        fold_index = fold_id - 1
+
+        # Reset all stochastic state before model creation and dataloader creation.
+        set_experiment_seed(experiment_seed)
+
+        print(
+            f"\n[E01 {variant} | Fold {fold_id}/5 | seed={experiment_seed} | "
+            f"split_seed={SPLIT_SEED} | limuc | resnet50]"
+        )
         model, head = build_model(variant, proj_dim=proj_dim, c_max=C_MAX)
         model = model.to(device)
-        train_ds, val_ds, test_ds = build_datasets(
-            fold, n_folds=n_folds, seed=seed, img_size=img_size
-        )
+        train_ds, val_ds, test_ds = build_datasets(fold_index, img_size=img_size)
 
         print(
             f"  Train {len(train_ds)} | Val {len(val_ds)} | Test {len(test_ds)}  "
@@ -140,6 +160,7 @@ def run_variant(
         )
         print(f"  {freeze_backbone(model, freeze_layers)}")
 
+        # torch initial seed is reset above; workers inherit deterministic seeds from it.
         train_loader = DataLoader(
             train_ds,
             batch_size,
@@ -210,7 +231,10 @@ def run_variant(
         checkpoint = {
             "model_state": best_state,
             "variant": variant,
-            "fold": fold,
+            "fold": fold_id,
+            "fold_index": fold_index,
+            "experiment_seed": experiment_seed,
+            "split_seed": SPLIT_SEED,
             "best_epoch": best_epoch,
             "test_final": test_metrics,
             "config": {
@@ -227,17 +251,34 @@ def run_variant(
                 "patience": patience,
                 "optimizer": "adamw",
                 "scheduler": "cosine",
-                "n_folds": n_folds,
-                "seed": seed,
+                "n_folds": N_FOLDS,
+                "split_seed": SPLIT_SEED,
+                "fold_seed_rule": "experiment_seed == fold_id",
+                "fold_seeds": list(FOLD_SEEDS),
             },
         }
-        torch.save(checkpoint, run_dir / f"fold{fold}.pt")
+        torch.save(checkpoint, run_dir / f"fold{fold_id}.pt")
         all_results.append(test_metrics)
-        fold_meta.append({"fold": fold, "best_epoch": best_epoch, "best_val_mae": best_mae})
+        fold_meta.append({
+            "fold": fold_id,
+            "fold_index": fold_index,
+            "experiment_seed": experiment_seed,
+            "split_seed": SPLIT_SEED,
+            "best_epoch": best_epoch,
+            "best_val_mae": best_mae,
+        })
 
     numeric_keys = list(all_results[0].keys())
     summary = {
         "variant": variant,
+        "protocol": {
+            "n_folds": N_FOLDS,
+            "fold_ids": [1, 2, 3, 4, 5],
+            "experiment_seeds": list(FOLD_SEEDS),
+            "fold_seed_rule": "experiment_seed == fold_id",
+            "split_seed": SPLIT_SEED,
+            "single_command_runs_all_folds": True,
+        },
         "config": {
             "dataset": "limuc",
             "backbone": "resnet50",
@@ -252,8 +293,6 @@ def run_variant(
             "patience": patience,
             "optimizer": "adamw",
             "scheduler": "cosine",
-            "n_folds": n_folds,
-            "seed": seed,
         },
         "fold_meta": fold_meta,
         "fold_results": all_results,
@@ -263,7 +302,7 @@ def run_variant(
     with open(run_dir / "results.json", "w") as f:
         json.dump(summary, f, indent=2, default=float)
 
-    print(f"\n[E01 {variant} summary]")
+    print(f"\n[E01 {variant} 5-fold summary]")
     for key in ("mae", "qwk", "acc", "macro_f1"):
         print(f"  {key:10s}: {summary['mean'][key]:.4f} ± {summary['std'][key]:.4f}")
     print(f"Saved to {run_dir}/")
