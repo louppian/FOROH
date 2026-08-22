@@ -53,7 +53,7 @@ Experiment/02_LevelSet_Necessity/train.py
         └── metrics.py
 ```
 
-E01 and E02 no longer require the temporary shared Phase-1 wrapper for their official runs.
+The obsolete shared Phase-1 wrapper/engine and old E01/E02 result directories have been removed from `reproduce-paper`.
 
 ## Fixed Phase-1 training setting
 
@@ -73,11 +73,9 @@ E01 and E02 no longer require the temporary shared Phase-1 wrapper for their off
 
 ## Result status
 
-Previously recovered E01 5-fold metrics were produced under the older seed-42 convention. They remain historical/development evidence only. The canonical result after this protocol change must be regenerated using:
+All pre-protocol E01/E02 results have been removed from the active branch. Canonical Phase-1 results must be regenerated using:
 
 ```bash
 python Experiment/01_Coordinate_Necessity/run.py
 python Experiment/02_LevelSet_Necessity/run.py
 ```
-
-After the canonical reruns are verified, obsolete shared-engine code and duplicate historical result directories can be removed following dependency audit.
