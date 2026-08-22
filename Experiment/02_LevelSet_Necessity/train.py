@@ -130,7 +130,7 @@ def run_variant(
     num_workers=4,
 ):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    run_dir = Path(output_dir) / f"{variant}_limuc"
+    run_dir = Path(output_dir) / "FOROH_limuc"
     run_dir.mkdir(parents=True, exist_ok=True)
     all_results, fold_meta = [], []
 
