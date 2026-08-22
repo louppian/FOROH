@@ -132,7 +132,7 @@ def run_variant(
 ):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     output_dir = Path(output_dir)
-    run_dir = output_dir / f"{variant}_limuc"
+    run_dir = output_dir / "FOROH_limuc"
     run_dir.mkdir(parents=True, exist_ok=True)
 
     all_results = []
@@ -142,6 +142,8 @@ def run_variant(
         if fold_id != experiment_seed:
             raise RuntimeError("Official protocol requires fold_id == experiment_seed")
         fold_index = fold_id - 1
+
+        # Reset all stochastic state before model creation and dataloader creation.
         set_experiment_seed(experiment_seed)
 
         print(
@@ -158,6 +160,7 @@ def run_variant(
         )
         print(f"  {freeze_backbone(model, freeze_layers)}")
 
+        # torch initial seed is reset above; workers inherit deterministic seeds from it.
         train_loader = DataLoader(
             train_ds,
             batch_size,
