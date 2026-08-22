@@ -1,8 +1,8 @@
 """Run the complete E01 coordinate-necessity experiment.
 
-This file is the only paper-run entrypoint for E01. It always runs all five
-folds for the three controlled variants and writes one 5-fold results.json per
-variant.
+Official paper entrypoint. One command always runs E01A/E01B/E01C over all
+five folds. Fold IDs are 1..5 and each fold uses the same-numbered experiment
+seed. The CV partition itself uses one fixed split seed inside train.py.
 """
 
 from pathlib import Path
@@ -15,8 +15,6 @@ REPO_ROOT = HERE.parents[1]
 RESULT_ROOT = REPO_ROOT / "Result" / "01_Coordinate_Necessity"
 
 COMMON = dict(
-    n_folds=5,
-    seed=42,
     proj_dim=128,
     epochs=50,
     batch_size=128,
