@@ -17,8 +17,8 @@ from models import PointPrototypeHead, build_model
 HUBER_DELTA = 0.5
 C_MAX = 3
 N_FOLDS = 5
-SPLIT_SEED = 1
-FOLD_SEEDS = (1, 2, 3, 4, 5)
+SPLIT_SEED = 12345
+FOLD_SEEDS = (12345, 12345, 12345, 12345, 12345)
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DATA_ROOT = REPO_ROOT / "data" / "limuc"
 
@@ -135,8 +135,6 @@ def run_variant(
     all_results, fold_meta = [], []
 
     for fold_id, experiment_seed in zip(range(1, N_FOLDS + 1), FOLD_SEEDS):
-        if fold_id != experiment_seed:
-            raise RuntimeError("Official protocol requires fold_id == experiment_seed")
         fold_index = fold_id - 1
         set_experiment_seed(experiment_seed)
 
@@ -222,7 +220,7 @@ def run_variant(
                 "freeze_layers": freeze_layers, "patience": patience,
                 "optimizer": "adamw", "scheduler": "cosine",
                 "n_folds": N_FOLDS, "split_seed": SPLIT_SEED,
-                "fold_seed_rule": "experiment_seed == fold_id",
+                "fold_seed_rule": "fixed experiment seed 12345",
                 "fold_seeds": list(FOLD_SEEDS),
             },
         }
@@ -241,7 +239,7 @@ def run_variant(
             "n_folds": N_FOLDS,
             "fold_ids": [1, 2, 3, 4, 5],
             "experiment_seeds": list(FOLD_SEEDS),
-            "fold_seed_rule": "experiment_seed == fold_id",
+            "fold_seed_rule": "fixed experiment seed 12345",
             "split_seed": SPLIT_SEED,
             "single_command_runs_all_folds": True,
         },
