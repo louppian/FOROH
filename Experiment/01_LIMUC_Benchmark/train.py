@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from Dataset.dataset import LIMUCDataset, N_FOLDS, load_official_splits, make_transforms
+from Dataset.dataset import LIMUCDataset, N_FOLDS, NUM_CLASSES, load_official_splits, make_transforms
 from Model.model import SUPPORTED_BACKBONES, SUPPORTED_LOSSES, build_model
 from losses import CDW_ALPHA, build_loss
 from output import compute_confusion, compute_metrics, write_predictions, write_results_csv
@@ -36,7 +36,7 @@ def set_seed(seed):
 def predict(outputs):
     if "logits" in outputs:
         return outputs["logits"].argmax(1)
-    return outputs["score"].round().clamp(0, 3).long()
+    return outputs["score"].round().clamp(0, NUM_CLASSES - 1).long()
 
 
 def run_epoch(model, loader, criterion, optimizer, device):
