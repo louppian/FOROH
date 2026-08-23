@@ -35,10 +35,10 @@ def main():
         "--patience", "10",
         "--optimizer", "adamw",
         "--scheduler", "cosine",
-        "--seed", "42",
+        "--seed", "12345",
         "--output-dir", str(OUTPUT),
     ]
-    print("[E00/LIMUC] FOROH paper reproduction")
+    print("[E00/LIMUC] FOROH paper reproduction | seed=12345")
     print(" ".join(cmd))
     subprocess.run(cmd, cwd=REPO_ROOT, check=True)
 
