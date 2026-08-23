@@ -36,11 +36,9 @@ Dataset/LIMUC/test_set/
 
 ## Backbones
 
-Minimum benchmark set:
-
 - Inception-v3: direct comparison to the CDW-CE lineage.
-- CoAtNet_2: strong published LIMUC backbone.
-- ResNet-18 or MobileNet-v3-large: lightweight-control backbone.
+- CoAtNet_2: published CoAtNet LIMUC backbone.
+- ResNet-18: lightweight-control backbone.
 
 ## Losses
 
@@ -50,8 +48,8 @@ Required comparisons for each backbone:
 - CDW-CE.
 - Ours.
 
-CDW-CE must report alpha `1..10`. If Ours has comparable hyperparameters, they
-must receive an explicit sweep at the same level of care.
+CDW-CE uses alpha `5.0` for the two-option CLI run. Alpha sweeps can be added as
+a separate controlled experiment without changing this benchmark entry point.
 
 ## Code
 
@@ -85,15 +83,17 @@ Each command runs all 10 fixed folds for one backbone/loss pair.
 
 ## Training Protocol
 
-- Input resolution: 224 x 224.
-- Pretraining: ImageNet-1K.
-- Epochs: 200 unless reproducing a baseline requires a documented exception.
-- Augmentation, optimizer, scheduler, and backbone settings are fixed across
-  losses within each backbone.
-- Training RNG seed: 42.
-- Fold assignment: fixed by the official fold JSON files. Do not regenerate
-  folds and do not introduce a split seed.
-- Test-set model selection is forbidden.
+The fold assignment is fixed by the official LIMUC fold JSON files. Do not
+regenerate folds and do not introduce a split seed.
+
+| Backbones | Protocol | Input | Optimizer | Scheduler | Best checkpoint | Early stop |
+|---|---|---:|---|---|---|---|
+| Inception-v3, ResNet-18 | Polat et al. CDW-CE repo | 299 for Inception, native for ResNet | Adam, lr 2e-4, wd 0 | ReduceLROnPlateau, mode max, factor 0.2, patience 15 | validation accuracy | patience 25 |
+| CoAtNet_2 | Nie & Zhang CoAtNet repo | 224 | AdamW, lr 5e-4, wd 0.005 | cosine with 5-epoch warmup, min lr 1e-5 | validation accuracy | none |
+
+Augmentation, optimizer, scheduler, checkpoint selection, and backbone settings
+are fixed across losses within each backbone. Inception-v3 CE/CDW-CE training
+uses the auxiliary classifier loss with weight `0.4`.
 
 ## Metrics
 
@@ -115,6 +115,12 @@ Required analyses:
 - Mayo 2 and Mayo 3 minority-class behavior.
 - One-vs-rest ROC/AUC and macro-average AUC.
 - Wilcoxon signed-rank test over fold-level results.
+
+## References
+
+- LIMUC/CDW-CE dataset and baseline code: https://github.com/GorkemP/labeled-images-for-ulcerative-colitis
+- CoAtNet LIMUC code: https://github.com/Nby8/limuc-nets
+- Nie and Zhang, CoAtNet-based LIMUC paper: https://www.mdpi.com/2076-3417/15/13/7484
 
 ## Output
 

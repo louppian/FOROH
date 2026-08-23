@@ -9,9 +9,17 @@ CDW_ALPHA = 5.0
 HUBER_DELTA = 0.5
 
 
+def _with_aux(outputs, targets, loss_fn):
+    loss = loss_fn(outputs["logits"], targets)
+    aux_logits = outputs.get("aux_logits")
+    if aux_logits is not None:
+        loss = loss + 0.4 * loss_fn(aux_logits, targets)
+    return loss
+
+
 class CELoss(nn.Module):
     def forward(self, outputs, targets):
-        return F.cross_entropy(outputs["logits"], targets)
+        return _with_aux(outputs, targets, F.cross_entropy)
 
 
 class CDWCELoss(nn.Module):
@@ -20,7 +28,9 @@ class CDWCELoss(nn.Module):
         self.alpha = alpha
 
     def forward(self, outputs, targets):
-        logits = outputs["logits"]
+        return _with_aux(outputs, targets, self._cdw_ce)
+
+    def _cdw_ce(self, logits, targets):
         probs = F.softmax(logits, dim=1)
         class_idx = torch.arange(NUM_CLASSES, device=logits.device, dtype=torch.float32)
         dist = (class_idx.unsqueeze(0) - targets.float().unsqueeze(1)).abs().pow(self.alpha)

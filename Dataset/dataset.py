@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+import numpy as np
 from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms
@@ -9,7 +10,8 @@ from torchvision import transforms
 MAYO_CLASSES = ("Mayo 0", "Mayo 1", "Mayo 2", "Mayo 3")
 NUM_CLASSES = 4
 N_FOLDS = 10
-IMG_SIZE = 224
+IMAGENET_MEAN = (0.485, 0.456, 0.406)
+IMAGENET_STD = (0.229, 0.224, 0.225)
 IMAGE_EXTS = {".bmp", ".jpg", ".jpeg", ".png"}
 
 
@@ -29,7 +31,7 @@ def _image_index(root):
             label = _grade_from_name(grade_dir.name)
             for path in sorted(grade_dir.iterdir()):
                 if path.suffix.lower() in IMAGE_EXTS:
-                    index[path.name] = (path, label)
+                    index.setdefault(path.name, []).append((path, label))
     return index
 
 
@@ -42,9 +44,11 @@ def _read_fold_file(path, index):
         for name in names:
             if name not in index:
                 raise FileNotFoundError(f"{name} from {path} was not found under LIMUC image folders")
-            img_path, indexed_label = index[name]
-            if indexed_label != label:
-                raise ValueError(f"Label mismatch for {name}: fold={label}, folder={indexed_label}")
+            matches = [(img_path, indexed_label) for img_path, indexed_label in index[name] if indexed_label == label]
+            if not matches:
+                labels = sorted({indexed_label for _, indexed_label in index[name]})
+                raise ValueError(f"Label mismatch for {name}: fold={label}, available={labels}")
+            img_path, _ = matches[0]
             samples.append((img_path, label))
     return samples
 
@@ -75,23 +79,68 @@ def load_official_splits(root):
     return {"folds": folds, "test": _read_test_set(root)}
 
 
-def train_transform():
-    return transforms.Compose([
-        transforms.Resize((IMG_SIZE, IMG_SIZE)),
+def compute_channel_stats(samples):
+    pixel_sum = np.zeros(3, dtype=np.float64)
+    pixel_sq_sum = np.zeros(3, dtype=np.float64)
+    pixel_count = 0
+    for path, _ in samples:
+        arr = np.asarray(Image.open(path).convert("RGB"), dtype=np.float32) / 255.0
+        flat = arr.reshape(-1, 3)
+        pixel_sum += flat.sum(axis=0)
+        pixel_sq_sum += np.square(flat).sum(axis=0)
+        pixel_count += flat.shape[0]
+    mean = pixel_sum / max(pixel_count, 1)
+    var = pixel_sq_sum / max(pixel_count, 1) - np.square(mean)
+    std = np.sqrt(np.maximum(var, 1e-12))
+    return mean.tolist(), std.tolist()
+
+
+def make_transforms(backbone, train_samples=None):
+    name = backbone.lower()
+    if name == "coatnet_2":
+        return _coatnet_train_transform(), _coatnet_eval_transform(), {"image_size": 224, "normalization": "imagenet"}
+    if train_samples is None:
+        raise ValueError("Polat-style transforms require train_samples for fold-specific mean/std")
+    mean, std = compute_channel_stats(train_samples)
+    size = 299 if name == "inception_v3" else None
+    return _polat_train_transform(mean, std, size), _polat_eval_transform(mean, std, size), {"image_size": size, "normalization": "fold_train_mean_std", "mean": mean, "std": std}
+
+
+def _polat_train_transform(mean, std, size):
+    steps = [
         transforms.RandomHorizontalFlip(),
-        transforms.RandomVerticalFlip(),
-        transforms.RandomRotation(15),
-        transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
+        transforms.RandomRotation((-180, 180)),
+    ]
+    if size is not None:
+        steps.append(transforms.Resize((size, size)))
+    steps.extend([transforms.ToTensor(), transforms.Normalize(mean, std)])
+    return transforms.Compose(steps)
+
+
+def _polat_eval_transform(mean, std, size):
+    steps = []
+    if size is not None:
+        steps.append(transforms.Resize((size, size)))
+    steps.extend([transforms.ToTensor(), transforms.Normalize(mean, std)])
+    return transforms.Compose(steps)
+
+
+def _coatnet_train_transform():
+    return transforms.Compose([
+        transforms.Resize((224, 224)),
+        transforms.RandomHorizontalFlip(),
+        transforms.ColorJitter(0.3, 0.3, 0.3),
         transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+        transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD),
+        transforms.RandomErasing(p=0.25, value="random"),
     ])
 
 
-def eval_transform():
+def _coatnet_eval_transform():
     return transforms.Compose([
-        transforms.Resize((IMG_SIZE, IMG_SIZE)),
+        transforms.Resize((224, 224)),
         transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+        transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD),
     ])
 
 
