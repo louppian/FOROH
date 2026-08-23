@@ -3,11 +3,8 @@
 Official protocol is intentionally non-configurable:
 - one call runs all five folds;
 - public fold IDs are 1,2,3,4,5;
-- training/experiment seed equals the public fold ID;
-- one fixed CV split seed is used for the complete 5-fold partition.
-
-Keeping the split seed fixed is required for a genuine 5-fold cross-validation
-partition. Changing the split seed per fold would create five unrelated splits.
+- training/experiment seed is fixed to 12345 for every fold;
+- one fixed CV split seed 12345 is used for the complete 5-fold partition.
 """
 
 import json
@@ -27,8 +24,8 @@ from models import build_model
 HUBER_DELTA = 0.5
 C_MAX = 3
 N_FOLDS = 5
-SPLIT_SEED = 1
-FOLD_SEEDS = (1, 2, 3, 4, 5)
+SPLIT_SEED = 12345
+FOLD_SEEDS = (12345, 12345, 12345, 12345, 12345)
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DATA_ROOT = REPO_ROOT / "data" / "limuc"
 
@@ -139,11 +136,8 @@ def run_variant(
     fold_meta = []
 
     for fold_id, experiment_seed in zip(range(1, N_FOLDS + 1), FOLD_SEEDS):
-        if fold_id != experiment_seed:
-            raise RuntimeError("Official protocol requires fold_id == experiment_seed")
         fold_index = fold_id - 1
 
-        # Reset all stochastic state before model creation and dataloader creation.
         set_experiment_seed(experiment_seed)
 
         print(
@@ -160,7 +154,6 @@ def run_variant(
         )
         print(f"  {freeze_backbone(model, freeze_layers)}")
 
-        # torch initial seed is reset above; workers inherit deterministic seeds from it.
         train_loader = DataLoader(
             train_ds,
             batch_size,
@@ -253,7 +246,7 @@ def run_variant(
                 "scheduler": "cosine",
                 "n_folds": N_FOLDS,
                 "split_seed": SPLIT_SEED,
-                "fold_seed_rule": "experiment_seed == fold_id",
+                "fold_seed_rule": "fixed experiment seed 12345",
                 "fold_seeds": list(FOLD_SEEDS),
             },
         }
@@ -275,7 +268,7 @@ def run_variant(
             "n_folds": N_FOLDS,
             "fold_ids": [1, 2, 3, 4, 5],
             "experiment_seeds": list(FOLD_SEEDS),
-            "fold_seed_rule": "experiment_seed == fold_id",
+            "fold_seed_rule": "fixed experiment seed 12345",
             "split_seed": SPLIT_SEED,
             "single_command_runs_all_folds": True,
         },
