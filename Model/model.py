@@ -55,12 +55,12 @@ def _create_feature_model(backbone):
 
 
 class FOROHModel(nn.Module):
-    def __init__(self, backbone, proj_dim=128):
+    def __init__(self, backbone):
         super().__init__()
         self.backbone = _create_feature_model(backbone)
         feat_dim = self.backbone.num_features
-        self.projector = nn.Sequential(nn.Linear(feat_dim, proj_dim), nn.ReLU(inplace=True), nn.Dropout(0.3), nn.Linear(proj_dim, proj_dim))
-        self.w_raw = nn.Parameter(F.normalize(torch.randn(proj_dim), dim=0))
+        self.projector = nn.Sequential(nn.Linear(feat_dim, feat_dim), nn.ReLU(inplace=True), nn.Dropout(0.1), nn.Linear(feat_dim, feat_dim))
+        self.w_raw = nn.Parameter(F.normalize(torch.randn(feat_dim), dim=0))
 
     def forward(self, x):
         z = self.backbone(x)
