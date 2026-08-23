@@ -1,0 +1,27 @@
+{
+  "root": ".",
+  "data_root": "Dataset/LIMUC",
+  "result_root": "Result/01_LIMUC_Benchmark",
+  "backbone": "coatnet_2",
+  "loss": "cdw_ce",
+  "protocol": {
+    "name": "nie_zhang",
+    "seed": 0,
+    "optimizer": "adamw",
+    "lr": 0.0005,
+    "weight_decay": 0.005,
+    "scheduler": "cosine",
+    "warmup_epochs": 5,
+    "warmup_lr": 1e-06,
+    "min_lr": 1e-05,
+    "early_stop": null,
+    "weighted_sampler": false
+  },
+  "n_folds": 10,
+  "fold_source": "Dataset/LIMUC/cross_validation_folds_train_val_info",
+  "split_seed": null,
+  "selection_metric": "val_accuracy",
+  "epochs": 200,
+  "batch_size": 32,
+  "cdw_alpha": 5.0
+}
