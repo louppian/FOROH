@@ -1,8 +1,8 @@
 """Run the complete E01 coordinate-necessity experiment.
 
 Official paper entrypoint. One command always runs E01A/E01B/E01C over all
-five folds. Fold IDs are 1..5 and each fold uses the same-numbered experiment
-seed. The CV partition itself uses one fixed split seed inside train.py.
+five folds. Fold IDs are 1..5. CV split seed and training/experiment seed are
+both fixed to 12345 inside train.py.
 """
 
 from pathlib import Path
