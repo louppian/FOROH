@@ -1,0 +1,9 @@
+.idea/
+todo.txt
+images/sample_images_2.png
+images/sample_images_3.png
+
+# Raw dataset folders not present in the source repo
+patient_based_classified_images/
+test_set/
+train_and_validation_sets/

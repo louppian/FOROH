@@ -2,6 +2,11 @@
 data/*
 !data/dataset_configs.json
 
+# LIMUC raw dataset folders not present in the source repo
+Dataset/LIMUC/patient_based_classified_images/
+Dataset/LIMUC/test_set/
+Dataset/LIMUC/train_and_validation_sets/
+
 # Model checkpoints / weights
 *.pt
 *.pth
