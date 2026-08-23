@@ -1,7 +1,6 @@
 import json
 from pathlib import Path
 
-import numpy as np
 from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms
@@ -79,80 +78,38 @@ def load_official_splits(root):
     return {"folds": folds, "test": _read_test_set(root)}
 
 
-def compute_channel_stats(samples):
-    pixel_sum = np.zeros(3, dtype=np.float64)
-    pixel_sq_sum = np.zeros(3, dtype=np.float64)
-    pixel_count = 0
-    for path, _ in samples:
-        arr = np.asarray(Image.open(path).convert("RGB"), dtype=np.float32) / 255.0
-        flat = arr.reshape(-1, 3)
-        pixel_sum += flat.sum(axis=0)
-        pixel_sq_sum += np.square(flat).sum(axis=0)
-        pixel_count += flat.shape[0]
-    mean = pixel_sum / max(pixel_count, 1)
-    var = pixel_sq_sum / max(pixel_count, 1) - np.square(mean)
-    std = np.sqrt(np.maximum(var, 1e-12))
-    return mean.tolist(), std.tolist()
+IMAGE_SIZES = {"inception_v3": 299, "resnet18": 224, "coatnet_2": 224}
 
 
-def make_transforms(backbone, train_samples=None):
-    name = backbone.lower()
-    if name == "coatnet_2":
-        return _coatnet_train_transform(), _coatnet_eval_transform(), {"image_size": 224, "normalization": "imagenet"}
-    if train_samples is None:
-        raise ValueError("Polat-style transforms require train_samples for fold-specific mean/std")
-    mean, std = compute_channel_stats(train_samples)
-    size = 299 if name == "inception_v3" else None
-    return _polat_train_transform(mean, std, size), _polat_eval_transform(mean, std, size), {"image_size": size, "normalization": "fold_train_mean_std", "mean": mean, "std": std}
-
-
-def _polat_train_transform(mean, std, size):
-    steps = [
-        transforms.RandomHorizontalFlip(),
-        transforms.RandomRotation((-180, 180)),
-    ]
-    if size is not None:
-        steps.append(transforms.Resize((size, size)))
-    steps.extend([transforms.ToTensor(), transforms.Normalize(mean, std)])
-    return transforms.Compose(steps)
-
-
-def _polat_eval_transform(mean, std, size):
-    steps = []
-    if size is not None:
-        steps.append(transforms.Resize((size, size)))
-    steps.extend([transforms.ToTensor(), transforms.Normalize(mean, std)])
-    return transforms.Compose(steps)
-
-
-def _coatnet_train_transform():
-    return transforms.Compose([
-        transforms.Resize((224, 224)),
-        transforms.RandomHorizontalFlip(),
-        transforms.ColorJitter(0.3, 0.3, 0.3),
-        transforms.ToTensor(),
-        transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD),
-        transforms.RandomErasing(p=0.25, value="random"),
-    ])
-
-
-def _coatnet_eval_transform():
-    return transforms.Compose([
-        transforms.Resize((224, 224)),
+def make_transforms(backbone):
+    size = IMAGE_SIZES[backbone.lower()]
+    train_tf = transforms.Compose([
+        transforms.Resize((size, size)),
         transforms.ToTensor(),
         transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD),
     ])
+    eval_tf = transforms.Compose([
+        transforms.Resize((size, size)),
+        transforms.ToTensor(),
+        transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD),
+    ])
+    info = {"image_size": size, "normalization": "imagenet"}
+    return train_tf, eval_tf, info
 
 
 class LIMUCDataset(Dataset):
-    def __init__(self, samples, transform):
+    def __init__(self, samples, transform, cache=False):
         self.samples = samples
         self.transform = transform
+        self.cache = {}
+        if cache:
+            for i, (path, _) in enumerate(samples):
+                self.cache[i] = Image.open(path).convert("RGB")
 
     def __len__(self):
         return len(self.samples)
 
     def __getitem__(self, idx):
         path, label = self.samples[idx]
-        image = Image.open(path).convert("RGB")
+        image = self.cache[idx] if idx in self.cache else Image.open(path).convert("RGB")
         return self.transform(image), label, path.name

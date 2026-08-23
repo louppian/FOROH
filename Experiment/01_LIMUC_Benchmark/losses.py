@@ -6,7 +6,6 @@ from Dataset.dataset import NUM_CLASSES
 
 
 CDW_ALPHA = 5.0
-HUBER_DELTA = 0.5
 
 
 def _with_aux(outputs, targets, loss_fn):
@@ -38,17 +37,49 @@ class CDWCELoss(nn.Module):
         return -(dist * log_complement).sum(dim=1).mean()
 
 
+class WeightedCELoss(nn.Module):
+    def __init__(self, num_classes=NUM_CLASSES):
+        super().__init__()
+        self.num_classes = num_classes
+
+    def forward(self, outputs, targets):
+        counts = torch.bincount(targets, minlength=self.num_classes).float().clamp(min=1.0)
+        weight = (1.0 / counts) / (1.0 / counts).sum() * self.num_classes
+        return _with_aux(outputs, targets, lambda logits, t: F.cross_entropy(logits, t, weight=weight.to(logits.device)))
+
+
+class FocalLoss(nn.Module):
+    def __init__(self, gamma=2.0):
+        super().__init__()
+        self.gamma = gamma
+
+    def _focal(self, logits, targets):
+        ce = F.cross_entropy(logits, targets, reduction="none")
+        pt = torch.exp(-ce)
+        return ((1 - pt) ** self.gamma * ce).mean()
+
+    def forward(self, outputs, targets):
+        return _with_aux(outputs, targets, self._focal)
+
+
+import math
+
+
 class FOROHLoss(nn.Module):
     def forward(self, outputs, targets):
-        diff = outputs["score"] - targets.float()
-        abs_diff = diff.abs()
-        loss = torch.where(abs_diff <= HUBER_DELTA, 0.5 * diff.square() / HUBER_DELTA, abs_diff - 0.5 * HUBER_DELTA)
-        return loss.mean()
+        theta = outputs["theta"]
+        theta_y = math.pi * targets.float() / (NUM_CLASSES - 1)
+        eps = (theta - theta_y) / math.pi
+        return (eps ** 2).mean()
 
 
 def build_loss(name):
     if name == "ce":
         return CELoss()
+    if name == "weighted_ce":
+        return WeightedCELoss()
+    if name == "focal":
+        return FocalLoss()
     if name == "cdw_ce":
         return CDWCELoss()
     if name == "foroh":

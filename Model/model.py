@@ -10,7 +10,7 @@ from Dataset.dataset import NUM_CLASSES
 
 
 SUPPORTED_BACKBONES = ("coatnet_2", "inception_v3", "resnet18")
-SUPPORTED_LOSSES = ("cdw_ce", "ce", "foroh")
+SUPPORTED_LOSSES = ("cdw_ce", "ce", "focal", "foroh", "weighted_ce")
 
 
 class ClassificationModel(nn.Module):
@@ -71,7 +71,7 @@ class FOROHModel(nn.Module):
         with torch.amp.autocast("cuda", enabled=False):
             cos = torch.clamp(u.float() @ w.float(), -1.0 + 1e-7, 1.0 - 1e-7)
             theta = torch.acos(cos)
-            score = theta / math.pi * (NUM_CLASSES - 1)
+            score = (NUM_CLASSES + 1) / math.pi * theta - 1
         return {"score": score, "theta": theta, "embedding": u}
 
 
