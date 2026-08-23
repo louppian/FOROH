@@ -1,0 +1,26 @@
+{
+  "root": ".",
+  "data_root": "Dataset/LIMUC",
+  "result_root": "Result/01_LIMUC_Benchmark",
+  "backbone": "inception_v3",
+  "loss": "cdw_ce",
+  "protocol": {
+    "name": "polat",
+    "seed": 35,
+    "optimizer": "adam",
+    "lr": 0.0002,
+    "weight_decay": 0.0,
+    "scheduler": "plateau",
+    "factor": 0.2,
+    "patience": 15,
+    "early_stop": 25,
+    "weighted_sampler": true
+  },
+  "n_folds": 10,
+  "fold_source": "Dataset/LIMUC/cross_validation_folds_train_val_info",
+  "split_seed": null,
+  "selection_metric": "val_accuracy",
+  "epochs": 200,
+  "batch_size": 32,
+  "cdw_alpha": 5.0
+}
