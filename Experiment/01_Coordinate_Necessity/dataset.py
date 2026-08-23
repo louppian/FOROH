@@ -12,8 +12,7 @@ from torchvision import transforms
 class LIMUCDataset(Dataset):
     C_MAX = 3
 
-    def __init__(self, root, split="train", transform=None, fold_index=None,
-                 n_folds=5, split_seed=1):
+    def __init__(self, root, split="train", transform=None, fold_index=None, n_folds=5, split_seed=1):
         self.root, self.transform, self.c_max = Path(root), transform, self.C_MAX
 
         if split == "test":

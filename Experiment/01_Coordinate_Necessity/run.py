@@ -14,18 +14,8 @@ HERE = Path(__file__).resolve().parent
 REPO_ROOT = HERE.parents[1]
 RESULT_ROOT = REPO_ROOT / "Result" / "01_Coordinate_Necessity"
 
-COMMON = dict(
-    proj_dim=128,
-    epochs=50,
-    batch_size=128,
-    lr=1e-4,
-    lr_head=1e-4,
-    weight_decay=1e-4,
-    img_size=224,
-    freeze_layers=2,
-    patience=10,
-    num_workers=4,
-)
+COMMON = dict(proj_dim=128, epochs=50, batch_size=128, lr=1e-4, lr_head=1e-3, weight_decay=1e-4, img_size=224,
+    freeze_layers=2, patience=10, num_workers=4,)
 
 EXPERIMENTS = [
     ("E01A", "euclidean_huber"),
