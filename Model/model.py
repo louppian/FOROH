@@ -59,7 +59,12 @@ class FOROHModel(nn.Module):
         super().__init__()
         self.backbone = _create_feature_model(backbone)
         feat_dim = self.backbone.num_features
-        self.projector = nn.Sequential(nn.Linear(feat_dim, feat_dim), nn.ReLU(inplace=True), nn.Dropout(0.1), nn.Linear(feat_dim, feat_dim))
+        self.projector = nn.Sequential(
+            nn.Linear(feat_dim, feat_dim),
+            nn.ReLU(inplace=True),
+            nn.Dropout(0.1),
+            nn.Linear(feat_dim, feat_dim),
+        )
         self.w_raw = nn.Parameter(F.normalize(torch.randn(feat_dim), dim=0))
 
     def forward(self, x):
@@ -71,7 +76,8 @@ class FOROHModel(nn.Module):
         with torch.amp.autocast("cuda", enabled=False):
             cos = torch.clamp(u.float() @ w.float(), -1.0 + 1e-7, 1.0 - 1e-7)
             theta = torch.acos(cos)
-            score = (NUM_CLASSES + 1) / math.pi * theta - 1
+            max_grade = NUM_CLASSES - 1
+            score = theta / math.pi * max_grade
         return {"score": score, "theta": theta, "embedding": u}
 
 
