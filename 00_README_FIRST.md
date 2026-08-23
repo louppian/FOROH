@@ -10,9 +10,13 @@
 
 ## 현재 가장 중요한 실험
 
-Phase-1 gate:
+Paper-facing LIMUC benchmark:
 
-- `Experiment/01_Coordinate_Necessity/`
+- `Experiment/01_LIMUC_Benchmark/`
+
+FOROH mechanism ablations:
+
+- `Experiment/FOROH_Ablation/01_Coordinate_Necessity/`
 - `Experiment/02_LevelSet_Necessity/`
 
 01/02가 해석 가능해진 뒤에만 03 이후로 확장한다.
