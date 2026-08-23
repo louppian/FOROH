@@ -1,8 +1,8 @@
 """Run the complete E02 level-set necessity experiment.
 
 One command always runs both E02 variants across all five folds. Public fold
-IDs are 1..5, and each fold uses the same-numbered experiment seed. The CV
-partition itself uses one fixed split seed inside train.py.
+IDs are 1..5. CV split seed and training/experiment seed are both fixed to
+12345 inside train.py.
 """
 
 from pathlib import Path
